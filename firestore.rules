@@ -1,0 +1,285 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net: default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    // Direct lookups
+    function getUser(userId) {
+      return get(/databases/$(database)/documents/users/$(userId)).data;
+    }
+
+    function userExists(userId) {
+      return exists(/databases/$(database)/documents/users/$(userId));
+    }
+
+    function isAdmin() {
+      return isSignedIn() && userExists(request.auth.uid) && getUser(request.auth.uid).tipo == 'ADM';
+    }
+
+    function isProducer() {
+      return isSignedIn() && userExists(request.auth.uid) && getUser(request.auth.uid).tipo == 'Produtor';
+    }
+
+    // -------------------------------------------------------------
+    // USERS COLLECTION
+    // -------------------------------------------------------------
+    match /users/{userId} {
+      allow get: if isSignedIn() && (
+                    isOwner(userId) ||
+                    isAdmin() ||
+                    (resource != null && resource.data.tipo in ['Produtor', 'Afiliado', 'ADM'])
+                  );
+      allow list: if (resource != null && resource.data.tipo == 'ADM') ||
+                  (isSignedIn() && (
+                    isAdmin() || 
+                    (resource != null && (
+                      resource.data.id == request.auth.uid || 
+                      resource.data.tipo in ['Produtor', 'Afiliado']
+                    ))
+                  ));
+      allow create: if isSignedIn() && isOwner(userId) && 
+                    request.resource.data.keys().hasAll(['id', 'nome', 'email', 'tipo', 'createdAt']) &&
+                    request.resource.data.keys().size() == 5 &&
+                    request.resource.data.nome is string && request.resource.data.nome.size() <= 150 &&
+                    request.resource.data.email is string && request.resource.data.email.size() <= 150 &&
+                    request.resource.data.tipo in ['ADM', 'Produtor', 'Afiliado', 'Cliente'] &&
+                    request.resource.data.id == userId;
+
+      allow update: if isSignedIn() && (isOwner(userId) || isAdmin()) &&
+                    request.resource.data.id == resource.data.id &&
+                    (
+                      // Only admins can change user types/roles
+                      (request.resource.data.tipo == resource.data.tipo) || isAdmin()
+                    );
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------
+    // PRODUCTS COLLECTION
+    // -------------------------------------------------------------
+    match /products/{productId} {
+      function isValidProduct(data) {
+        return data.keys().hasAll(['id', 'nome', 'descrição', 'preço', 'comissão_afiliado', 'produtor_id', 'status', 'featured', 'createdAt']) &&
+               data.id is string && data.id.size() <= 128 &&
+               data.nome is string && data.nome.size() <= 150 &&
+               data['descrição'] is string && data['descrição'].size() <= 2000 &&
+               data['preço'] is number && data['preço'] > 0 &&
+               data['comissão_afiliado'] is number && data['comissão_afiliado'] >= 0 && data['comissão_afiliado'] <= 100 &&
+               data.produtor_id is string && data.produtor_id.size() <= 128 &&
+               data.status in ['pending', 'approved', 'rejected'] &&
+               data.featured is bool;
+      }
+
+      allow get: if isSignedIn();
+      allow list: if isSignedIn(); // anyone signed in can list products (approved only filter in UI, or producer view)
+      allow create: if isSignedIn() && isProducer() && isValidProduct(request.resource.data) &&
+                    request.resource.data.produtor_id == request.auth.uid &&
+                    request.resource.data.status == 'pending' &&
+                    request.resource.data.featured == false; // premium paid feature initially false, or pending approval
+
+      allow update: if isSignedIn() && (
+                      isAdmin() || // Admins can change status or edit any aspect
+                      (
+                        isProducer() && request.auth.uid == resource.data.produtor_id &&
+                        isValidProduct(request.resource.data) &&
+                        request.resource.data.produtor_id == resource.data.produtor_id &&
+                        // Producers can't self-approve products or mark as featured unless paying
+                        (
+                          // Option 1: General product edit (re-submits to pending)
+                          (request.resource.data.status == 'pending' && request.resource.data.featured == resource.data.featured) ||
+                          // Option 2: Pay to feature (keeps previous status/values, just toggles featured to true when paid)
+                          (request.resource.data.featured == true && request.resource.data.status == resource.data.status)
+                        )
+                      )
+                    );
+      allow delete: if isAdmin() || (isSignedIn() && isProducer() && resource.data.produtor_id == request.auth.uid);
+    }
+
+    // -------------------------------------------------------------
+    // ORDERS COLLECTION
+    // -------------------------------------------------------------
+    match /orders/{orderId} {
+      function isValidOrder(data) {
+        return data.keys().hasAll(['id', 'cliente_id', 'produto_id', 'status', 'bairro', 'taxa_entrega', 'total', 'createdAt']) &&
+               data.id is string && data.id.size() <= 128 &&
+               data.cliente_id is string && data.cliente_id.size() <= 128 &&
+               data.produto_id is string && data.produto_id.size() <= 128 &&
+               data.status in ['pending', 'processing', 'shipped', 'delivered', 'cancelled'] &&
+               data.bairro is string && data.bairro.size() <= 150 &&
+               data.taxa_entrega is number && data.taxa_entrega >= 0 &&
+               data.total is number && data.total > 0;
+      }
+
+      function orderInvolvesUser() {
+        return resource.data.cliente_id == request.auth.uid || 
+               resource.data.produtor_id == request.auth.uid ||
+               (resource.data.afiliado_id != null && resource.data.afiliado_id == request.auth.uid);
+      }
+
+      allow get: if isSignedIn() && (isAdmin() || (resource != null && orderInvolvesUser()));
+      allow list: if isSignedIn() && (isAdmin() || (resource != null && (resource.data.cliente_id == request.auth.uid || resource.data.produtor_id == request.auth.uid || resource.data.afiliado_id == request.auth.uid)));
+      allow create: if isSignedIn() && isValidOrder(request.resource.data) && 
+                    request.resource.data.cliente_id == request.auth.uid; // Client placing order
+
+      allow update: if isSignedIn() && (
+                      isAdmin() ||
+                      (
+                        // Client cancelling order
+                        resource.data.cliente_id == request.auth.uid &&
+                        isValidOrder(request.resource.data) &&
+                        request.resource.data.status == 'cancelled' &&
+                        resource.data.status == 'pending'
+                      ) ||
+                      (
+                        // Producer updating order status (processing, shipped, delivered, cancelled)
+                        resource.data.produtor_id == request.auth.uid &&
+                        isValidOrder(request.resource.data) &&
+                        request.resource.data.status in ['processing', 'shipped', 'delivered', 'cancelled']
+                      )
+                    );
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------
+    // WALLETS COLLECTION
+    // -------------------------------------------------------------
+    match /wallets/{walletId} {
+      allow get: if isSignedIn() && (isOwner(walletId) || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isSignedIn() && (
+                      isOwner(walletId) || 
+                      (walletId == 'PLATAFORMA' && !exists(/databases/$(database)/documents/wallets/PLATAFORMA))
+                    ) &&
+                    request.resource.data.keys().hasAll(['id', 'user_id', 'saldo']) &&
+                    request.resource.data.keys().size() == 3 &&
+                    request.resource.data.id == walletId &&
+                    request.resource.data.user_id == walletId &&
+                    (
+                      (walletId == 'PLATAFORMA' && request.resource.data.saldo == 15000) ||
+                      (walletId != 'PLATAFORMA' && request.resource.data.saldo == 100000)
+                    );
+      
+      allow update: if isSignedIn() && (
+                      isAdmin() || // Admins can manage or direct deposit/withdraw
+                      (
+                        // Self update ONLY if they are requesting a withdrawal (meaning the balance decreases)
+                        isOwner(walletId) && 
+                        request.resource.data.user_id == resource.data.user_id &&
+                        request.resource.data.saldo <= resource.data.saldo
+                      )
+                    );
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------
+    // WITHDRAWALS COLLECTION
+    // -------------------------------------------------------------
+    match /withdrawals/{withdrawalId} {
+      function isValidWithdrawal(data) {
+        return data.keys().hasAll(['id', 'user_id', 'valor', 'metodo', 'detalhes', 'status', 'createdAt']) &&
+               data.id is string && data.id.size() <= 128 &&
+               data.user_id is string && data.user_id.size() <= 128 &&
+               data.valor is number && data.valor >= 200 &&
+               data.metodo in ['IBAN', 'PayPay', 'Unitel Money', 'Afrimoney', 'Multicaixa Express'] &&
+               data.status in ['pending', 'approved', 'rejected'];
+      }
+
+      allow get: if isSignedIn() && (isAdmin() || (resource != null && resource.data.user_id == request.auth.uid));
+      allow list: if isSignedIn() && (isAdmin() || (resource != null && resource.data.user_id == request.auth.uid));
+      allow create: if isSignedIn() && isValidWithdrawal(request.resource.data) &&
+                    request.resource.data.user_id == request.auth.uid &&
+                    request.resource.data.status == 'pending';
+
+      allow update: if isSignedIn() && isAdmin(); // Only admins can approve or reject withdrawals
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------
+    // DELIVERY FEES COLLECTION
+    // -------------------------------------------------------------
+    match /deliveryFees/{feeId} {
+      allow read: if isSignedIn(); // client needs to read fee for checkout
+      allow write: if isAdmin(); // only adm can create/update/delete delivery fees
+    }
+
+    // -------------------------------------------------------------
+    // REVIEWS COLLECTION
+    // -------------------------------------------------------------
+    match /reviews/{reviewId} {
+      function isValidReview(data) {
+        return data.keys().hasAll(['id', 'cliente_id', 'produto_id', 'avaliação', 'comentário', 'createdAt']) &&
+               data.id is string && data.id.size() <= 128 &&
+               data.cliente_id is string && data.cliente_id.size() <= 128 &&
+               data.produto_id is string && data.produto_id.size() <= 128 &&
+               data['avaliação'] is number && data['avaliação'] >= 1 && data['avaliação'] <= 5 &&
+               data['comentário'] is string && data['comentário'].size() <= 1000;
+      }
+
+      allow read: if isSignedIn(); // anyone signed in can read product reviews
+      allow create: if isSignedIn() && isValidReview(request.resource.data) &&
+                    request.resource.data.cliente_id == request.auth.uid;
+      allow update: if isSignedIn() && isValidReview(request.resource.data) &&
+                    resource != null && resource.data.cliente_id == request.auth.uid;
+      allow delete: if isAdmin() || (isSignedIn() && resource != null && resource.data.cliente_id == request.auth.uid);
+    }
+
+    // -------------------------------------------------------------
+    // COUPONS COLLECTION
+    // -------------------------------------------------------------
+    match /coupons/{couponId} {
+      allow read: if isSignedIn(); // clients can validate coupons
+      allow write: if isAdmin(); // only admin can manage coupons
+    }
+
+    // -------------------------------------------------------------
+    // CHATS COLLECTION
+    // -------------------------------------------------------------
+    match /chats/{chatId} {
+      allow read: if isSignedIn() && (
+                     isAdmin() || 
+                     (resource != null && (resource.data.senderId == request.auth.uid || resource.data.receiverId == request.auth.uid))
+                   );
+      allow create: if isSignedIn() && 
+                    request.resource.data.keys().hasAll(['id', 'orderId', 'senderId', 'receiverId', 'message', 'createdAt']) &&
+                    request.resource.data.senderId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------
+    // NOTIFICATIONS COLLECTION
+    // -------------------------------------------------------------
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn() && (isAdmin() || (resource != null && resource.data.user_id == request.auth.uid));
+      allow create: if isSignedIn(); // any trigger can create a notification feed item
+      allow update: if isSignedIn() && resource != null && resource.data.user_id == request.auth.uid &&
+                    request.resource.data.read is bool &&
+                    request.resource.data.id == resource.data.id &&
+                    request.resource.data.user_id == resource.data.user_id &&
+                    request.resource.data.title == resource.data.title &&
+                    request.resource.data.message == resource.data.message &&
+                    request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isSignedIn() && resource != null && resource.data.user_id == request.auth.uid;
+    }
+  }
+}

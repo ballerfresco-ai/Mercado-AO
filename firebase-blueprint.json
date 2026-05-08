@@ -1,0 +1,192 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Represents a user of the Mercado AO platform.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "The unique user ID matching Firebase Auth UID." },
+        "nome": { "type": "string", "description": "Full name of the user." },
+        "email": { "type": "string", "description": "Email address of the user." },
+        "tipo": { "type": "string", "enum": ["ADM", "Produtor", "Afiliado", "Cliente"], "description": "User type/role." },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "nome", "email", "tipo"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Represents a product offered by a seller/producer.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nome": { "type": "string" },
+        "descrição": { "type": "string" },
+        "preço": { "type": "number", "description": "Price in Kwanza (Kz)." },
+        "comissão_afiliado": { "type": "number", "description": "Affiliate commission percentage (0-100)." },
+        "produtor_id": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "featured": { "type": "boolean", "description": "Whether the product is highlighted on homepage." },
+        "imageUrl": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "nome", "descrição", "preço", "comissão_afiliado", "produtor_id", "status"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Represents a customer purchase order.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "cliente_id": { "type": "string" },
+        "produto_id": { "type": "string" },
+        "afiliado_id": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "processing", "shipped", "delivered", "cancelled"] },
+        "bairro": { "type": "string" },
+        "taxa_entrega": { "type": "number" },
+        "total": { "type": "number" },
+        "subtotal": { "type": "number" },
+        "desconto": { "type": "number" },
+        "comissao_plataforma": { "type": "number" },
+        "comissao_afiliado_paga": { "type": "number" },
+        "comissao_produtor_paga": { "type": "number" },
+        "delivery_address": { "type": "string" },
+        "phone": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "cliente_id", "produto_id", "status", "bairro", "taxa_entrega", "total"]
+    },
+    "Wallet": {
+      "title": "Wallet",
+      "description": "Maintains user financial ledger.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Same as user_id or matching user_id." },
+        "user_id": { "type": "string" },
+        "saldo": { "type": "number", "description": "Available balance in Kwanza (Kz)." }
+      },
+      "required": ["id", "user_id", "saldo"]
+    },
+    "Withdrawal": {
+      "title": "Withdrawal",
+      "description": "Represents a withdrawal request.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "user_id": { "type": "string" },
+        "valor": { "type": "number" },
+        "metodo": { "type": "string", "enum": ["IBAN", "PayPay", "Unitel Money", "Afrimoney", "Multicaixa Express"] },
+        "detalhes": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "user_id", "valor", "metodo", "status"]
+    },
+    "DeliveryFee": {
+      "title": "DeliveryFee",
+      "description": "Represents delivery fee set per neighborhood (bairro) in Angola.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "bairro": { "type": "string" },
+        "valor": { "type": "number" }
+      },
+      "required": ["id", "bairro", "valor"]
+    },
+    "Review": {
+      "title": "Review",
+      "description": "Ratings and reviews left by buyers.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "cliente_id": { "type": "string" },
+        "produto_id": { "type": "string" },
+        "avaliação": { "type": "number", "minimum": 1, "maximum": 5 },
+        "comentário": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "cliente_id", "produto_id", "avaliação", "comentário"]
+    },
+    "Coupon": {
+      "title": "Coupon",
+      "description": "Discount coupons.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "código": { "type": "string" },
+        "desconto": { "type": "number", "description": "Discount as percentage (e.g. 15 for 15% off)." },
+        "validade": { "type": "string", "description": "Expiration date string (YYYY-MM-DD)." }
+      },
+      "required": ["id", "código", "desconto", "validade"]
+    },
+    "ChatSimple": {
+      "title": "ChatSimple",
+      "description": "A simple messaging system between Cliente and Vendedor.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "orderId": { "type": "string" },
+        "senderId": { "type": "string" },
+        "receiverId": { "type": "string" },
+        "message": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "orderId", "senderId", "receiverId", "message", "createdAt"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "System-wide notification for user feeds.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "user_id": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "user_id", "title", "message", "read", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Platform users profiles."
+    },
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Marketplace products."
+    },
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Client orders."
+    },
+    "/wallets/{walletId}": {
+      "schema": "Wallet",
+      "description": "Finances mapping where walletId matches userId."
+    },
+    "/withdrawals/{withdrawalId}": {
+      "schema": "Withdrawal",
+      "description": "Financial withdrawals requests."
+    },
+    "/deliveryFees/{feeId}": {
+      "schema": "DeliveryFee",
+      "description": "Delivery fees indexed by neighborhood names or IDs."
+    },
+    "/reviews/{reviewId}": {
+      "schema": "Review",
+      "description": "Product reviews."
+    },
+    "/coupons/{couponId}": {
+      "schema": "Coupon",
+      "description": "Discount coupons validation."
+    },
+    "/chats/{chatId}": {
+      "schema": "ChatSimple",
+      "description": "Direct message chat documents between order buyers and sellers (producers)."
+    },
+    "/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "Live user alert feed."
+    }
+  }
+}
