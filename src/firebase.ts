@@ -31,13 +31,13 @@ import {
 import firebaseConfigLocal from '../firebase-applet-config.json';
 
 const firebaseConfig = {
-  apiKey: (import.meta.env.VITE_FIREBASE_API_KEY as string),
-  authDomain: (import.meta.env.VITE_FIREBASE_AUTH_DOMAIN as string),
-  projectId: (import.meta.env.VITE_FIREBASE_PROJECT_ID as string),
-  storageBucket: (import.meta.env.VITE_FIREBASE_STORAGE_BUCKET as string),
-  messagingSenderId: (import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID as string),
-  appId: (import.meta.env.VITE_FIREBASE_APP_ID as string),
-  firestoreDatabaseId: (import.meta.env.VITE_FIREBASE_DATABASE_ID as string) || '(default)'
+  apiKey: ((import.meta as any).env.VITE_FIREBASE_API_KEY as string),
+  authDomain: ((import.meta as any).env.VITE_FIREBASE_AUTH_DOMAIN as string),
+  projectId: ((import.meta as any).env.VITE_FIREBASE_PROJECT_ID as string),
+  storageBucket: ((import.meta as any).env.VITE_FIREBASE_STORAGE_BUCKET as string),
+  messagingSenderId: ((import.meta as any).env.VITE_FIREBASE_MESSAGING_SENDER_ID as string),
+  appId: ((import.meta as any).env.VITE_FIREBASE_APP_ID as string),
+  firestoreDatabaseId: ((import.meta as any).env.VITE_FIREBASE_DATABASE_ID as string) || '(default)'
 };
 
 // Error logging for missing environment variables
@@ -350,6 +350,20 @@ export async function approveWithdrawal(withdrawalId: string, admId: string): Pr
 
     const batch = writeBatch(db);
     batch.update(withdrawalRef, { status: 'approved' });
+
+    // Handle Fee for Affiliates (200 Kz fee as requested)
+    if (withdrawal.user_tipo === 'Afiliado') {
+      const platWalletRef = doc(db, 'wallets', 'PLATAFORMA');
+      const platWalletSnap = await getDoc(platWalletRef);
+      if (platWalletSnap.exists()) {
+        const platBalance = platWalletSnap.data().saldo;
+        // In this logic, the 200 Kz is the platform revenue.
+        // The user already has the "withdrawal.valor" deducted from their wallet during the request.
+        // So we just move 200 Kz from the "withdrawn pool" to the platform's actual balance.
+        // Actually, the user requests X, Y is deducted. If X-200 is what they get physically, then 200 goes to platform.
+        batch.update(platWalletRef, { saldo: platBalance + 200 });
+      }
+    }
 
     // Notify requester
     const notiId = `noti_with_approved_${withdrawalId}`;

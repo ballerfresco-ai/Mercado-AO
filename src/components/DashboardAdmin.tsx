@@ -44,7 +44,9 @@ import {
   Search,
   CheckCircle,
   XCircle,
-  FileText
+  FileText,
+  CreditCard,
+  Settings
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -70,7 +72,7 @@ export function DashboardAdmin({ userId }: DashboardAdminProps) {
   const [couponValidadeInput, setCouponValidadeInput] = useState('');
 
   // UI state
-  const [activeTab, setActiveTab] = useState<'visão_geral' | 'produtos' | 'saques' | 'pedidos' | 'bairros_cupons' | 'ranking_parceiros'>('visão_geral');
+  const [activeTab, setActiveTab] = useState<'visão_geral' | 'produtos' | 'saques' | 'pedidos' | 'bairros_cupons' | 'ranking_parceiros' | 'carteira'>('visão_geral');
   const [rejectReasonPopup, setRejectReasonPopup] = useState<string | null>(null);
   const [rejectId, setRejectId] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -262,6 +264,13 @@ export function DashboardAdmin({ userId }: DashboardAdminProps) {
     .filter(o => o.status === 'delivered')
     .reduce((sum, o) => sum + o.comissao_plataforma, 0);
 
+  // Fee revenue from affiliate withdrawals (200 Kz each)
+  const affiliateWithdrawalFees = withdrawals
+    .filter(w => w.status === 'approved' && w.user_tipo === 'Afiliado')
+    .length * 200;
+
+  const totalAdminGains = platVolume + affiliateWithdrawalFees;
+
   // Pending Cash sales (orders not delivered yet)
   const pendingVolume = orders
     .filter(o => o.status === 'pending' || o.status === 'processing' || o.status === 'shipped')
@@ -352,6 +361,7 @@ export function DashboardAdmin({ userId }: DashboardAdminProps) {
           { id: 'produtos', label: 'Acolher Produtos', icon: ShoppingBag, badge: products.filter(p => p.status === 'pending').length },
           { id: 'saques', label: 'Pedidos Saque', icon: DollarSign, badge: withdrawals.filter(w => w.status === 'pending').length },
           { id: 'pedidos', label: 'Gerir Vendas', icon: FileText },
+          { id: 'carteira', label: 'Carteira ADM', icon: CreditCard },
           { id: 'bairros_cupons', label: 'Bairros & Cupons', icon: MapPin },
           { id: 'ranking_parceiros', label: 'Ranking Afiliados', icon: Trophy }
         ].map(tab => {
@@ -396,9 +406,15 @@ export function DashboardAdmin({ userId }: DashboardAdminProps) {
               <div className="bg-slate-900/40 p-5 rounded-2xl border border-white/5 space-y-2">
                 <div className="text-xs font-mono text-slate-400 uppercase">Faturamento CoD Concluído</div>
                 <div className="text-3xl font-display font-black text-slate-100">{totalVolume.toLocaleString()} Kz</div>
-                <div className="text-[10px] text-emerald-400 flex items-center gap-1">
-                  <span>Plataforma reteve 10%:</span>
-                  <strong className="font-mono">{platVolume.toLocaleString()} Kz</strong>
+                <div className="text-[10px] text-emerald-400 flex flex-col gap-0.5">
+                  <div className="flex justify-between items-center">
+                    <span>Comissão (10%):</span>
+                    <strong className="font-mono">{platVolume.toLocaleString()} Kz</strong>
+                  </div>
+                  <div className="flex justify-between items-center text-blue-400 border-t border-white/5 pt-0.5 mt-0.5">
+                    <span>Taxas Saques (200kz):</span>
+                    <strong className="font-mono">{affiliateWithdrawalFees.toLocaleString()} Kz</strong>
+                  </div>
                 </div>
               </div>
 
@@ -948,6 +964,95 @@ export function DashboardAdmin({ userId }: DashboardAdminProps) {
                     ))}
                   </div>
                 )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ADMIN WALLET TAB */}
+        {activeTab === 'carteira' && (
+          <div className="space-y-8 animate-fadeIn">
+            <div className="flex justify-between items-end">
+              <div>
+                <h3 className="font-display font-bold text-xl text-white">Carteira da Plataforma</h3>
+                <p className="text-sm text-slate-400">Total acumulado de comissões de produtos (10%) e taxas de saque de afiliados (200 Kz).</p>
+              </div>
+              <div className="bg-slate-900 p-4 rounded-2xl border border-blue-500/20 text-right">
+                <p className="text-[10px] font-mono text-slate-400 uppercase">Saldo Consolidado</p>
+                <p className="text-3xl font-display font-black text-sky-400">
+                  {totalAdminGains.toLocaleString()} <span className="text-sm font-sans font-normal">Kz</span>
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="bg-[#0B0F19] border border-white/5 p-6 rounded-3xl space-y-4">
+                <h4 className="font-bold text-white flex items-center gap-2">
+                  <CreditCard className="w-5 h-5 text-blue-500" />
+                  Levantamento de Taxas
+                </h4>
+                <p className="text-xs text-slate-400 leading-relaxed font-sans">
+                  Aqui pode realizar a transferência do faturamento da plataforma (Taxas e Comissões) para a sua conta bancária de Admin.
+                </p>
+                
+                <div className="bg-slate-900/50 p-4 rounded-xl space-y-2">
+                  <div className="flex justify-between text-xs text-slate-300">
+                    <span>Comissões de Vendas:</span>
+                    <span className="font-mono font-bold">{platVolume.toLocaleString()} Kz</span>
+                  </div>
+                  <div className="flex justify-between text-xs text-slate-300">
+                    <span>Taxas de Saque Afiliados:</span>
+                    <span className="font-mono font-bold">{affiliateWithdrawalFees.toLocaleString()} Kz</span>
+                  </div>
+                  <div className="pt-2 border-t border-white/10 flex justify-between text-sm font-bold text-white">
+                    <span>Total Disponível:</span>
+                    <span className="text-sky-400">{totalAdminGains.toLocaleString()} Kz</span>
+                  </div>
+                </div>
+
+                <div className="space-y-4 pt-2">
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-slate-500 uppercase font-mono">IBAN de Destino (Admin)</label>
+                    <input 
+                      type="text" 
+                      placeholder="AO06 0000..."
+                      className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-sm text-white"
+                    />
+                  </div>
+                  <button className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition-all shadow-lg shadow-blue-600/20">
+                    Solicitar Transferência do Lucro
+                  </button>
+                  <p className="text-[10px] text-slate-500 text-center italic">Transferência processada via compensação bancária em Angola.</p>
+                </div>
+              </div>
+
+              <div className="bg-[#0B0F19] border border-white/5 p-6 rounded-3xl space-y-6">
+                <h4 className="font-bold text-white flex items-center gap-2">
+                  <Settings className="w-5 h-5 text-slate-400" />
+                  Configurações Financeiras
+                </h4>
+                
+                <div className="space-y-4">
+                  <div className="p-4 bg-slate-900/30 rounded-2xl border border-white/5 flex justify-between items-center">
+                    <div>
+                      <p className="text-sm font-semibold text-white">Taxa de Saque Afiliado</p>
+                      <p className="text-[10px] text-slate-400 uppercase font-mono tracking-tighter">Fixada por saque aprovado</p>
+                    </div>
+                    <div className="text-blue-500 font-display font-black text-xl">200 Kz</div>
+                  </div>
+
+                  <div className="p-4 bg-slate-900/30 rounded-2xl border border-white/5 flex justify-between items-center">
+                    <div>
+                      <p className="text-sm font-semibold text-white">Comissão Marketplace</p>
+                      <p className="text-[10px] text-slate-400 uppercase font-mono tracking-tighter">Sobre valor do produto</p>
+                    </div>
+                    <div className="text-blue-500 font-display font-black text-xl">10%</div>
+                  </div>
+
+                  <p className="text-[10px] text-slate-500 leading-relaxed bg-slate-950/40 p-4 rounded-xl border border-white/5">
+                    <strong>NOTA ADM:</strong> Estes valores são os pilares da sustentabilidade do Mercado AO. Alterações nestas taxas requerem atualização nos termos de serviço para produtores e afiliados angolanos.
+                  </p>
+                </div>
               </div>
             </div>
           </div>

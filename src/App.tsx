@@ -12,6 +12,7 @@ import { DashboardAdmin } from './components/DashboardAdmin';
 import { DashboardProducer } from './components/DashboardProducer';
 import { DashboardAffiliate } from './components/DashboardAffiliate';
 import { MarketplaceClient } from './components/MarketplaceClient';
+import { ProfileSection } from './components/ProfileSection';
 import { ChatsSection } from './components/ChatsSection';
 import { 
   LogOut, 
@@ -28,7 +29,10 @@ import {
   Users,
   Trophy,
   DollarSign,
-  X
+  ShoppingBag,
+  X,
+  CreditCard,
+  Settings
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -43,7 +47,8 @@ export default function App() {
   // Custom role override for the user interface
   const [overrideRole, setOverrideRole] = useState<UserRole | null>(null);
 
-  // Selected Order Chat details
+  // UI state for navigation
+  const [currentView, setCurrentView] = useState<'marketplace' | 'dashboard' | 'profile'>('marketplace');
   const [activeChatOrderId, setActiveChatOrderId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -53,9 +58,12 @@ export default function App() {
         // Fetch his official profile
         const profile = await getUserProfile(u.uid);
         setUserProfile(profile || null);
+        // Default to marketplace when logging in
+        setCurrentView('marketplace');
       } else {
         setUserProfile(null);
         setOverrideRole(null);
+        setCurrentView('marketplace');
       }
       setAuthLoading(false);
     });
@@ -67,6 +75,7 @@ export default function App() {
     setAuthLoading(true);
     const profile = await getUserProfile(uid);
     setUserProfile(profile || null);
+    setCurrentView('marketplace');
     setAuthLoading(false);
   };
 
@@ -128,6 +137,50 @@ export default function App() {
           {/* Nav Right Profile section */}
           <div className="flex items-center gap-3">
             
+            {/* Main Navigation */}
+            <nav className="hidden md:flex items-center gap-1 mr-4 bg-slate-900/50 p-1 rounded-xl border border-white/5">
+              <button
+                onClick={() => setCurrentView('marketplace')}
+                className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-2 ${
+                  currentView === 'marketplace' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <ShoppingBag className="w-4 h-4" />
+                <span>Mercado</span>
+              </button>
+              <button
+                onClick={() => setCurrentView('dashboard')}
+                className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-2 ${
+                  currentView === 'dashboard' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <TrendingUp className="w-4 h-4" />
+                <span>Painel</span>
+              </button>
+              <button
+                onClick={() => setCurrentView('profile')}
+                className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-2 ${
+                  currentView === 'profile' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <User className="w-4 h-4" />
+                <span>Perfil</span>
+              </button>
+            </nav>
+
+            {/* Mobile Nav Toggle - simple labels for mobile */}
+            <div className="flex md:hidden gap-1 bg-slate-900/50 p-1 rounded-lg mr-2">
+              <button onClick={() => setCurrentView('marketplace')} className={`p-2 rounded-md ${currentView === 'marketplace' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}>
+                <ShoppingBag className="w-4 h-4" />
+              </button>
+              <button onClick={() => setCurrentView('dashboard')} className={`p-2 rounded-md ${currentView === 'dashboard' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}>
+                <TrendingUp className="w-4 h-4" />
+              </button>
+              <button onClick={() => setCurrentView('profile')} className={`p-2 rounded-md ${currentView === 'profile' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}>
+                <User className="w-4 h-4" />
+              </button>
+            </div>
+
             {/* User details capsule */}
             <div className="hidden sm:flex flex-col text-right">
               <span className="text-xs font-semibold text-white">{userProfile.nome}</span>
@@ -158,34 +211,45 @@ export default function App() {
       {/* CORE WEB MAIN SECTION BODY */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 md:px-8 py-8 relative z-10" id="app_view_area">
         <AnimatePresence mode="wait">
-          {activeRole === 'ADM' && (
-            <motion.div key="adm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <DashboardAdmin userId={currentUser.uid} />
-            </motion.div>
-          )}
-
-          {activeRole === 'Produtor' && (
-            <motion.div key="produtor" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <DashboardProducer 
-                userId={currentUser.uid} 
-                userProfile={userProfile}
-                onOpenChat={(orderId) => setActiveChatOrderId(orderId)}
-              />
-            </motion.div>
-          )}
-
-          {activeRole === 'Afiliado' && (
-            <motion.div key="afiliado" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <DashboardAffiliate userId={currentUser.uid} userProfile={userProfile} />
-            </motion.div>
-          )}
-
-          {activeRole === 'Cliente' && (
-            <motion.div key="cliente" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+          {currentView === 'marketplace' && (
+            <motion.div key="marketplace" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               <MarketplaceClient 
                 userId={currentUser.uid}
                 onOpenChat={(orderId) => setActiveChatOrderId(orderId)}
               />
+            </motion.div>
+          )}
+
+          {currentView === 'dashboard' && (
+            <motion.div key="dashboard" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              {activeRole === 'ADM' && <DashboardAdmin userId={currentUser.uid} />}
+              {activeRole === 'Produtor' && (
+                <DashboardProducer 
+                  userId={currentUser.uid} 
+                  userProfile={userProfile}
+                  onOpenChat={(orderId) => setActiveChatOrderId(orderId)}
+                />
+              )}
+              {activeRole === 'Afiliado' && <DashboardAffiliate userId={currentUser.uid} userProfile={userProfile} />}
+              {activeRole === 'Cliente' && (
+                <div className="bg-slate-900/40 p-12 rounded-3xl border border-white/5 text-center">
+                  <ShoppingBag className="w-16 h-16 text-blue-500 mx-auto mb-4 opacity-50" />
+                  <h3 className="text-xl font-display font-bold text-white mb-2">Acesso ao Marketplace</h3>
+                  <p className="text-slate-400 max-w-md mx-auto mb-6">Como comprador, a sua área principal é o Mercado. Use o botão acima para ver os produtos disponíveis.</p>
+                  <button 
+                    onClick={() => setCurrentView('marketplace')}
+                    className="px-6 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-500 transition-colors"
+                  >
+                    Ver Mercado agora
+                  </button>
+                </div>
+              )}
+            </motion.div>
+          )}
+
+          {currentView === 'profile' && (
+            <motion.div key="profile" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <ProfileSection userProfile={userProfile} onUpdate={setUserProfile} />
             </motion.div>
           )}
         </AnimatePresence>

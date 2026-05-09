@@ -6,11 +6,11 @@ const MODEL_NAME = 'gemini-3-flash-preview';
 
 function getAI() {
   if (!genAI) {
-    const apiKey = (import.meta.env.VITE_GEMINI_API_KEY as string) || (process.env.GEMINI_API_KEY as string);
+    const apiKey = process.env.GEMINI_API_KEY || (import.meta as any).env.VITE_GEMINI_API_KEY;
     if (!apiKey || apiKey === "MY_GEMINI_API_KEY") {
-      throw new Error("Chave Gemini API não configurada. Adicione VITE_GEMINI_API_KEY nas variáveis de ambiente.");
+      throw new Error("Chave Gemini API não configurada. Adicione GEMINI_API_KEY nas variáveis de ambiente.");
     }
-    genAI = new GoogleGenAI(apiKey);
+    genAI = new GoogleGenAI({ apiKey });
   }
   return genAI;
 }
@@ -34,9 +34,11 @@ A descrição deve ter:
 3. Um convite de ação destacando o pagamento na entrega (Cash on Delivery).
 Escreva em Português de Angola. Evite formatação pesada, prefira markdown simples.`;
 
-    const model = ai.getGenerativeModel({ model: MODEL_NAME });
-    const result = await model.generateContent(prompt);
-    return result.response.text() || "Não foi possível gerar a descrição no momento.";
+    const result = await ai.models.generateContent({
+      model: MODEL_NAME,
+      contents: prompt
+    });
+    return result.text || "Não foi possível gerar a descrição no momento.";
   } catch (error) {
     console.error("Gemini description error:", error);
     return "Erro ao comunicar com a inteligência artificial para gerar descrição do produto.";
@@ -62,9 +64,11 @@ Link de Afiliado: ${affiliateLink}
 
 Use emojis atraentes, quebras de linhas limpas e uma linguagem vibrante, típica do marketing moderno em Angola.`;
 
-    const model = ai.getGenerativeModel({ model: MODEL_NAME });
-    const result = await model.generateContent(prompt);
-    return result.response.text() || "";
+    const result = await ai.models.generateContent({
+      model: MODEL_NAME,
+      contents: prompt
+    });
+    return result.text || "";
   } catch (error) {
     console.error("Gemini promo copy error:", error);
     return `🔥 Super novidade no Mercado AO!\n📦 Compre *${productName}* por apenas *${price.toLocaleString()} Kz*.\n👉 Pagamento 100% seguro apenas no ato de entrega!\n🔗 Garanta o seu aqui: ${affiliateLink}`;
@@ -98,9 +102,11 @@ ${contextStr}
 
 Por favor, gere APENAS a próxima mensagem direta curta que o ${roleAs} responderia neste chat. Sem introduções vazias do tipo "Vendedor diz:".`;
 
-    const model = ai.getGenerativeModel({ model: MODEL_NAME });
-    const result = await model.generateContent(prompt);
-    return result.response.text().trim() || "Estou a verificar esta questão agora mesmo, estamos juntos!";
+    const result = await ai.models.generateContent({
+      model: MODEL_NAME,
+      contents: prompt
+    });
+    return result.text.trim() || "Estou a verificar esta questão agora mesmo, estamos juntos!";
   } catch (error) {
     console.error("Gemini chat simulation error:", error);
     return senderType === 'Cliente' ? "Olá, sim! Vou preparar a sua encomenda imediatamente e mantê-lo informado sobre a entrega do motoboy." : "Agradeço! Estarei atento ao telemóvel para receber o produto.";

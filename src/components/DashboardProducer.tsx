@@ -30,7 +30,10 @@ import {
   Flame,
   LayoutGrid,
   FileSpreadsheet,
-  AlertCircle
+  AlertCircle,
+  Upload,
+  Image as ImageIcon,
+  Trash2
 } from 'lucide-react';
 import { motion } from 'motion/react';
 
@@ -53,6 +56,7 @@ export function DashboardProducer({ userId, userProfile, onOpenChat }: Dashboard
   const [prodPreco, setProdPreco] = useState('');
   const [comissaoAfiliadoInput, setComissaoAfiliadoInput] = useState('10');
   const [imageUrlInput, setImageUrlInput] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
 
   // AI generator entries
   const [bulletsAi, setBulletsAi] = useState('');
@@ -214,6 +218,28 @@ export function DashboardProducer({ userId, userProfile, onOpenChat }: Dashboard
   const triggerSuccess = (msg: string) => {
     setSuccessMsg(msg);
     setTimeout(() => setSuccessMsg(null), 3500);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      alert("A imagem é muito grande. Escolha uma imagem com menos de 2MB.");
+      return;
+    }
+
+    setIsUploading(true);
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setImageUrlInput(reader.result as string);
+      setIsUploading(false);
+    };
+    reader.onerror = () => {
+      alert("Erro ao ler o arquivo.");
+      setIsUploading(false);
+    };
+    reader.readAsDataURL(file);
   };
 
   // Computations
@@ -432,14 +458,44 @@ export function DashboardProducer({ userId, userProfile, onOpenChat }: Dashboard
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-mono uppercase text-slate-450 block">URL da Imagem Ilustrativa (Opcional)</label>
-                <input
-                  type="url"
-                  placeholder="Ex: https://images.unsplash.com/photo-or-link"
-                  className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-blue-500 placeholder-slate-600"
-                  value={imageUrlInput}
-                  onChange={(e) => setImageUrlInput(e.target.value)}
-                />
+                <label className="text-xs font-mono uppercase text-slate-450 block">Imagem Ilustrativa do Produto</label>
+                <div className="relative group">
+                  <div className={`w-full h-32 rounded-xl bg-slate-950 border-2 border-dashed transition-all flex flex-col items-center justify-center gap-2 overflow-hidden ${
+                    imageUrlInput ? 'border-blue-500/50' : 'border-white/10 hover:border-white/20'
+                  }`}>
+                    {imageUrlInput ? (
+                      <div className="relative w-full h-full group">
+                        <img src={imageUrlInput} className="w-full h-full object-cover" alt="Preview" />
+                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <button 
+                            type="button"
+                            onClick={() => setImageUrlInput('')}
+                            className="bg-red-500 p-2 rounded-full text-white"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <Upload className={`w-6 h-6 ${isUploading ? 'animate-bounce text-blue-500' : 'text-slate-500'}`} />
+                        <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">
+                          {isUploading ? 'A carregar...' : 'Fazer Upload (PNG, JPG)'}
+                        </span>
+                      </>
+                    )}
+                    <input 
+                      type="file" 
+                      accept="image/*"
+                      onChange={handleFileChange}
+                      className="absolute inset-0 opacity-0 cursor-pointer"
+                      disabled={isUploading}
+                    />
+                  </div>
+                  {!imageUrlInput && (
+                    <p className="text-[10px] text-slate-600 mt-1 italic">Tamanho máximo: 2MB. O arquivo será incluído no seu catálogo.</p>
+                  )}
+                </div>
               </div>
 
               <div className="space-y-1">
