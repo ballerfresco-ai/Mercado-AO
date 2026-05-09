@@ -12,48 +12,6 @@ export interface UserProfile {
   createdAt: string;
 }
 
-export interface HomeBanner {
-  id: string;
-  imageUrl: string;
-  title: string;
-  link?: string;
-  active: boolean;
-  order: number;
-}
-
-export interface Report {
-  id: string;
-  reporterId: string;
-  reporterName: string;
-  targetId: string; // ID of product or user
-  targetType: 'product' | 'user';
-  reason: string;
-  details: string;
-  status: 'pending' | 'resolved';
-  priority: 'low' | 'medium' | 'high';
-  createdAt: string;
-}
-
-export interface AuditLog {
-  id: string;
-  adminId: string;
-  adminName: string;
-  action: string;
-  details: string;
-  ip?: string;
-  device?: string;
-  createdAt: string;
-}
-
-export interface CartStats {
-  id: string;
-  userId: string;
-  itemsCount: number;
-  totalValue: number;
-  lastUpdated: string;
-  isAbandoned: boolean;
-}
-
 export type ProductStatus = 'pending' | 'approved' | 'rejected';
 
 export interface Product {
