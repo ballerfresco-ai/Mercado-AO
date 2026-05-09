@@ -5,16 +5,21 @@ import {
   featureProduct, 
   getWallet, 
   requestWithdrawal, 
-  updateOrderStatus 
+  updateOrderStatus,
+  saveCoupon,
+  deleteCoupon,
+  createMaterialApoio,
+  deleteMaterialApoio
 } from '../firebase';
 import { generateProductDescription } from '../services/gemini';
 import { 
   collection, 
   query, 
   where, 
-  onSnapshot 
+  onSnapshot,
+  getDocs
 } from 'firebase/firestore';
-import { Product, Order, Wallet, Withdrawal, UserProfile } from '../types';
+import { Product, Order, Wallet, Withdrawal, UserProfile, Coupon, MaterialApoio } from '../types';
 import { 
   Sparkles, 
   Plus, 
@@ -33,7 +38,13 @@ import {
   AlertCircle,
   Upload,
   Image as ImageIcon,
-  Trash2
+  Trash2,
+  Users,
+  Ticket,
+  FileText,
+  Trophy,
+  Wallet as WalletIcon,
+  ExternalLink
 } from 'lucide-react';
 import { motion } from 'motion/react';
 
@@ -49,6 +60,9 @@ export function DashboardProducer({ userId, userProfile, onOpenChat }: Dashboard
   const [orders, setOrders] = useState<Order[]>([]);
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
+  const [coupons, setCoupons] = useState<Coupon[]>([]);
+  const [materials, setMaterials] = useState<MaterialApoio[]>([]);
+  const [affiliates, setAffiliates] = useState<UserProfile[]>([]);
 
   // Form entries
   const [prodNome, setProdNome] = useState('');
@@ -57,6 +71,17 @@ export function DashboardProducer({ userId, userProfile, onOpenChat }: Dashboard
   const [comissaoAfiliadoInput, setComissaoAfiliadoInput] = useState('10');
   const [imageUrlInput, setImageUrlInput] = useState('');
   const [isUploading, setIsUploading] = useState(false);
+
+  // Coupon form
+  const [couponCode, setCouponCode] = useState('');
+  const [couponDiscount, setCouponDiscount] = useState('10');
+  const [couponExpiry, setCouponExpiry] = useState('');
+
+  // Material form
+  const [matTitulo, setMatTitulo] = useState('');
+  const [matDesc, setMatDesc] = useState('');
+  const [matLink, setMatLink] = useState('');
+  const [matTipo, setMatTipo] = useState<'Link' | 'Arquivo' | 'Texto'>('Link');
 
   // AI generator entries
   const [bulletsAi, setBulletsAi] = useState('');
@@ -68,7 +93,7 @@ export function DashboardProducer({ userId, userProfile, onOpenChat }: Dashboard
   const [withdrawDetalhes, setWithdrawDetalhes] = useState('');
 
   // UI state
-  const [activeTab, setActiveTab] = useState<'meus_produtos' | 'vendas_pedidos' | 'cadastrar_produto' | 'carteira_saque'>('meus_produtos');
+  const [activeTab, setActiveTab] = useState<'meus_produtos' | 'vendas_pedidos' | 'cadastrar_produto' | 'carteira_saque' | 'afiliados' | 'cupons' | 'material_apoio' | 'ranking_afiliados'>('meus_produtos');
   const [savingProduct, setSavingProduct] = useState(false);
   const [withdrawError, setWithdrawError] = useState<string | null>(null);
   const [withdrawSuccess, setWithdrawSuccess] = useState<string | null>(null);
@@ -102,13 +127,82 @@ export function DashboardProducer({ userId, userProfile, onOpenChat }: Dashboard
       setWithdrawals(snap.docs.map(d => d.data() as Withdrawal));
     });
 
+    // 5. Coupons of this producer
+    const qCoupons = query(collection(db, 'coupons'), where('produtor_id', '==', userId));
+    const unsubCoupons = onSnapshot(qCoupons, (snap) => {
+      setCoupons(snap.docs.map(d => d.data() as Coupon));
+    });
+
+    // 6. Material de Apoio
+    const qMaterials = query(collection(db, 'material_apoio'), where('produtor_id', '==', userId));
+    const unsubMaterials = onSnapshot(qMaterials, (snap) => {
+      setMaterials(snap.docs.map(d => d.data() as MaterialApoio));
+    });
+
+    // 7. Affiliates fetch - filter from users collection
+    const fetchAffiliates = async () => {
+      const qAfil = query(collection(db, 'users'), where('tipo', '==', 'Afiliado'));
+      const snap = await getDocs(qAfil);
+      setAffiliates(snap.docs.map(d => d.data() as UserProfile));
+    };
+    fetchAffiliates();
+
     return () => {
       unsubProds();
       unsubOrders();
       unsubWallet();
       unsubWith();
+      unsubCoupons();
+      unsubMaterials();
     };
   }, [userId]);
+
+  const handleCreateCoupon = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!couponCode || !couponExpiry) return;
+    try {
+      await saveCoupon(couponCode, parseInt(couponDiscount), couponExpiry, userId);
+      setCouponCode('');
+      setCouponExpiry('');
+      triggerSuccess("Cupão criado com sucesso!");
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleDeleteCoupon = async (id: string) => {
+    if (!window.confirm("Remover este cupão?")) return;
+    try {
+      await deleteCoupon(id);
+      triggerSuccess("Cupão removido.");
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleAddMaterial = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!matTitulo || !matDesc) return;
+    try {
+      await createMaterialApoio(userId, matTitulo, matDesc, matTipo, matLink);
+      setMatTitulo('');
+      setMatDesc('');
+      setMatLink('');
+      triggerSuccess("Material de apoio adicionado!");
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleDeleteMaterial = async (id: string) => {
+    if (!window.confirm("Remover material?")) return;
+    try {
+      await deleteMaterialApoio(id);
+      triggerSuccess("Material removido.");
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
 
   const handleAskAIForDescription = async () => {
     if (!prodNome.trim()) {
@@ -287,7 +381,11 @@ export function DashboardProducer({ userId, userProfile, onOpenChat }: Dashboard
           { id: 'meus_produtos', label: 'Meus Produtos', icon: LayoutGrid, count: products.length },
           { id: 'vendas_pedidos', label: 'Entregas & Vendas', icon: FileSpreadsheet, count: orders.filter(o => o.status !== 'delivered').length },
           { id: 'cadastrar_produto', label: '+ Publicar Novo', icon: Plus },
-          { id: 'carteira_saque', label: 'Carteira & Saques', icon: ArrowUpRight }
+          { id: 'afiliados', label: 'Afiliados', icon: Users },
+          { id: 'cupons', label: 'Cupões', icon: Ticket },
+          { id: 'material_apoio', label: 'Apoio', icon: FileText },
+          { id: 'ranking_afiliados', label: 'Ranking', icon: Trophy },
+          { id: 'carteira_saque', label: 'Carteira', icon: WalletIcon }
         ].map(item => {
           const Icon = item.icon;
           const isSel = activeTab === item.id;
@@ -407,6 +505,249 @@ export function DashboardProducer({ userId, userProfile, onOpenChat }: Dashboard
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* AFILIADOS */}
+        {activeTab === 'afiliados' && (
+          <div className="space-y-6">
+            <h3 className="font-display font-bold text-lg">Seus Afiliados Ativos</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {affiliates.length === 0 ? (
+                <div className="col-span-full text-center py-10 bg-slate-900/20 rounded-2xl border border-dashed border-slate-700 text-slate-500">
+                  Nenhum afiliado encontrado na plataforma de momento.
+                </div>
+              ) : (
+                affiliates.map(afil => (
+                  <div key={afil.id} className="bg-slate-900/60 p-5 rounded-2xl border border-white/5 space-y-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-400 font-bold border border-blue-500/20">
+                        {afil.nome.charAt(0)}
+                      </div>
+                      <div>
+                        <h4 className="font-display font-bold text-white text-sm">{afil.nome}</h4>
+                        <p className="text-[10px] text-slate-500 font-mono">{afil.email}</p>
+                      </div>
+                    </div>
+                    <div className="pt-2 border-t border-white/5 flex justify-between items-center text-xs">
+                      <span className="text-slate-400">Vendas para você:</span>
+                      <span className="font-bold text-emerald-400">
+                        {orders.filter(o => o.afiliado_id === afil.id && o.status === 'delivered').length}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* CUPONS */}
+        {activeTab === 'cupons' && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-1">
+              <form onSubmit={handleCreateCoupon} className="bg-slate-900/40 p-6 rounded-2xl border border-white/10 space-y-4">
+                <h3 className="font-display font-bold text-lg">Criar Novo Cupão</h3>
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-mono text-slate-400 uppercase">CÓDIGO</label>
+                    <input 
+                      type="text" 
+                      required
+                      placeholder="EX: PROMO10"
+                      className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 uppercase"
+                      value={couponCode}
+                      onChange={(e) => setCouponCode(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-mono text-slate-400 uppercase">DESCONTO (%)</label>
+                    <select 
+                      className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-sm text-white"
+                      value={couponDiscount}
+                      onChange={(e) => setCouponDiscount(e.target.value)}
+                    >
+                      <option value="5">5%</option>
+                      <option value="10">10%</option>
+                      <option value="15">15%</option>
+                      <option value="20">20%</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-mono text-slate-400 uppercase">VALIDADE</label>
+                    <input 
+                      type="date" 
+                      required
+                      className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-sm text-white"
+                      value={couponExpiry}
+                      onChange={(e) => setCouponExpiry(e.target.value)}
+                    />
+                  </div>
+                  <button type="submit" className="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold font-mono">
+                    Gerar Cupão
+                  </button>
+                </div>
+              </form>
+            </div>
+            <div className="lg:col-span-2 space-y-4">
+              <h3 className="font-display font-bold text-lg">Seus Cupões Ativos</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {coupons.length === 0 ? (
+                  <p className="text-slate-500 text-xs italic">Nenhum cupão criado.</p>
+                ) : (
+                  coupons.map(cp => (
+                    <div key={cp.id} className="bg-slate-900 border border-white/5 p-4 rounded-2xl flex justify-between items-center group">
+                      <div>
+                        <div className="text-lg font-display font-black text-blue-400 uppercase">{cp.código}</div>
+                        <div className="text-[10px] text-slate-500 font-mono">
+                          Desconto: {cp.desconto}% | Validade: {cp.validade}
+                        </div>
+                      </div>
+                      <button onClick={() => handleDeleteCoupon(cp.id)} className="text-slate-600 hover:text-red-500 text-xs flex items-center gap-1">
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Remover</span>
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MATERIAL DE APOIO */}
+        {activeTab === 'material_apoio' && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-1">
+              <form onSubmit={handleAddMaterial} className="bg-slate-900/40 p-6 rounded-2xl border border-white/10 space-y-4">
+                <h3 className="font-display font-bold text-lg">Adicionar Apoio</h3>
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-mono text-slate-400 uppercase">TÍTULO</label>
+                    <input 
+                      type="text" 
+                      required
+                      className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-sm text-white"
+                      value={matTitulo}
+                      onChange={(e) => setMatTitulo(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-mono text-slate-400 uppercase">DESCRIÇÃO</label>
+                    <textarea 
+                      required
+                      className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-sm text-white"
+                      value={matDesc}
+                      onChange={(e) => setMatDesc(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-mono text-slate-400 uppercase">TIPO</label>
+                    <select 
+                      className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-sm text-white"
+                      value={matTipo}
+                      onChange={(e) => setMatTipo(e.target.value as any)}
+                    >
+                      <option value="Link">Link Externo</option>
+                      <option value="Arquivo">Arquivo/Download</option>
+                      <option value="Texto">Texto Explicativo</option>
+                    </select>
+                  </div>
+                  {matTipo !== 'Texto' && (
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-mono text-slate-400 uppercase">LINK / URL</label>
+                      <input 
+                        type="url" 
+                        className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-sm text-white"
+                        value={matLink}
+                        onChange={(e) => setMatLink(e.target.value)}
+                      />
+                    </div>
+                  )}
+                  <button type="submit" className="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold font-mono">
+                    Publicar Material
+                  </button>
+                </div>
+              </form>
+            </div>
+            <div className="lg:col-span-2 space-y-4">
+              <h3 className="font-display font-bold text-lg">Seu Repositório de Apoio</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {materials.length === 0 ? (
+                  <p className="text-slate-500 text-xs italic">Nenhum material publicado.</p>
+                ) : (
+                  materials.map(mat => (
+                    <div key={mat.id} className="bg-slate-900 border border-white/5 p-4 rounded-2xl space-y-2 relative group">
+                      <div className="flex justify-between">
+                        <h4 className="font-display font-bold text-white text-sm">{mat.titulo}</h4>
+                        <span className="text-[9px] font-bold bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">{mat.tipo}</span>
+                      </div>
+                      <p className="text-[10px] text-slate-400 leading-tight">{mat.descricao}</p>
+                      {mat.link && (
+                        <a href={mat.link} target="_blank" rel="noopener noreferrer" className="text-blue-400 text-[10px] flex items-center gap-1 hover:underline">
+                          <ExternalLink className="w-3 h-3" /> Aceder Recurso
+                        </a>
+                      )}
+                      <button onClick={() => handleDeleteMaterial(mat.id)} className="absolute top-2 right-2 text-slate-700 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* RANKING AFILIADOS */}
+        {activeTab === 'ranking_afiliados' && (
+          <div className="space-y-6 text-slate-100">
+            <h3 className="font-display font-bold text-lg">Top 5 Afiliados do Seu Produto</h3>
+            <div className="bg-slate-900/40 rounded-2xl border border-white/10 overflow-hidden">
+              <table className="w-full text-left text-xs font-mono">
+                <thead className="bg-slate-900 text-slate-500">
+                  <tr>
+                    <th className="p-4 py-3">Posição</th>
+                    <th className="p-4 py-3">Nome</th>
+                    <th className="p-4 py-3 text-right">Vendas Concluídas</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {(() => {
+                    // Calculate and sort top affiliates
+                    const rankData = Array.from(new Set(orders.map(o => o.afiliado_id).filter(Boolean)))
+                      .map(afId => {
+                        const count = orders.filter(o => o.afiliado_id === afId && o.status === 'delivered').length;
+                        const afil = affiliates.find(a => a.id === afId);
+                        return { id: afId, nome: afil?.nome || "Afiliado Desconhecido", count };
+                      })
+                      .sort((a, b) => b.count - a.count)
+                      .slice(0, 5);
+
+                    if (rankData.length === 0) {
+                      return <tr><td colSpan={3} className="p-10 text-center text-slate-500 italic">Sem dados de ranking ainda.</td></tr>;
+                    }
+
+                    return rankData.map((rd, i) => (
+                      <tr key={rd.id} className="hover:bg-white/5">
+                        <td className="p-4">
+                          <div className={`w-6 h-6 rounded-full flex items-center justify-center font-bold ${
+                            i === 0 ? 'bg-amber-500 text-black' :
+                            i === 1 ? 'bg-slate-400 text-black' :
+                            i === 2 ? 'bg-amber-700 text-white' :
+                            'bg-slate-800 text-slate-500'
+                          }`}>
+                            {i + 1}
+                          </div>
+                        </td>
+                        <td className="p-4 font-display font-bold text-white text-sm">{rd.nome}</td>
+                        <td className="p-4 text-right font-black text-emerald-400 text-sm">{rd.count}</td>
+                      </tr>
+                    ));
+                  })()}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 

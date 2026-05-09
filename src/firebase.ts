@@ -83,7 +83,8 @@ import {
   OrderStatus,
   ProductStatus,
   UserRole,
-  WithdrawalMethod
+  WithdrawalMethod,
+  MaterialApoio
 } from './types';
 
 // Initialize Firebase only if valid
@@ -642,7 +643,7 @@ export async function getCoupons(): Promise<Coupon[]> {
   }
 }
 
-export async function saveCoupon(código: string, desconto: number, validade: string): Promise<Coupon> {
+export async function saveCoupon(código: string, desconto: number, validade: string, produtor_id?: string): Promise<Coupon> {
   const id = `coupon_${código.toUpperCase()}`;
   const path = `coupons/${id}`;
   try {
@@ -650,12 +651,51 @@ export async function saveCoupon(código: string, desconto: number, validade: st
       id,
       código: código.toUpperCase(),
       desconto,
-      validade
+      validade,
+      produtor_id
     };
     await setDoc(doc(db, 'coupons', id), coupon);
     return coupon;
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+// -------------------------------------------------------------
+// MATERIAL DE APOIO
+// -------------------------------------------------------------
+export async function createMaterialApoio(
+  produtor_id: string,
+  titulo: string,
+  descricao: string,
+  tipo: 'Link' | 'Arquivo' | 'Texto',
+  link?: string
+): Promise<MaterialApoio> {
+  const id = `mat_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+  const path = `material_apoio/${id}`;
+  try {
+    const material: MaterialApoio = {
+      id,
+      produtor_id,
+      titulo,
+      descricao,
+      tipo,
+      link,
+      createdAt: new Date().toISOString()
+    };
+    await setDoc(doc(db, 'material_apoio', id), material);
+    return material;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function deleteMaterialApoio(id: string): Promise<void> {
+  const path = `material_apoio/${id}`;
+  try {
+    await deleteDoc(doc(db, 'material_apoio', id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
   }
 }
 

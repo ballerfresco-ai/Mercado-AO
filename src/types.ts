@@ -94,6 +94,17 @@ export interface Coupon {
   código: string;
   desconto: number; // percentage (e.g. 10 for 10%)
   validade: string; // YYYY-MM-DD
+  produtor_id?: string;
+}
+
+export interface MaterialApoio {
+  id: string;
+  produtor_id: string;
+  titulo: string;
+  descricao: string;
+  link?: string;
+  tipo: 'Link' | 'Arquivo' | 'Texto';
+  createdAt: string;
 }
 
 export interface ChatSimple {
