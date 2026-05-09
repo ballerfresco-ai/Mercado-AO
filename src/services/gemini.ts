@@ -1,7 +1,10 @@
 import { GoogleGenAI } from "@google/genai";
 
 // Standard initialization per guidelines
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+// In AI Studio, GEMINI_API_KEY is injected into process.env.
+// In external deploys (Vercel/Netlify), we should use VITE_GEMINI_API_KEY.
+const apiKey = (import.meta.env.VITE_GEMINI_API_KEY as string) || (process.env.GEMINI_API_KEY as string);
+const ai = new GoogleGenAI({ apiKey });
 
 // Using recommended model 'gemini-3-flash-preview' for text-only assistant
 const MODEL_NAME = 'gemini-3-flash-preview';

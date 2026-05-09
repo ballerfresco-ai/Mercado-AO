@@ -25,7 +25,41 @@ import {
   getDocFromServer,
   writeBatch
 } from 'firebase/firestore';
-import firebaseConfig from '../firebase-applet-config.json';
+// Firebase configuration handling
+// For Vercel/Netlify: Use VITE_ environment variables
+// For AI Studio: Use the auto-generated config file
+import firebaseConfigLocal from '../firebase-applet-config.json';
+
+const firebaseConfig = {
+  apiKey: (import.meta.env.VITE_FIREBASE_API_KEY as string),
+  authDomain: (import.meta.env.VITE_FIREBASE_AUTH_DOMAIN as string),
+  projectId: (import.meta.env.VITE_FIREBASE_PROJECT_ID as string),
+  storageBucket: (import.meta.env.VITE_FIREBASE_STORAGE_BUCKET as string),
+  messagingSenderId: (import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID as string),
+  appId: (import.meta.env.VITE_FIREBASE_APP_ID as string),
+  firestoreDatabaseId: (import.meta.env.VITE_FIREBASE_DATABASE_ID as string) || '(default)'
+};
+
+// Only try to use the local config if environment variables are missing
+if (!firebaseConfig.apiKey) {
+  try {
+    // We use a conditional check and fallback to avoid crashing the build
+    // @ts-ignore
+    const localConfig = firebaseConfigLocal;
+    if (localConfig) {
+      firebaseConfig.apiKey = localConfig.apiKey;
+      firebaseConfig.authDomain = localConfig.authDomain;
+      firebaseConfig.projectId = localConfig.projectId;
+      firebaseConfig.storageBucket = localConfig.storageBucket;
+      firebaseConfig.messagingSenderId = localConfig.messagingSenderId;
+      firebaseConfig.appId = localConfig.appId;
+      firebaseConfig.firestoreDatabaseId = localConfig.firestoreDatabaseId || '(default)';
+    }
+  } catch (e) {
+    console.warn("Firebase configuration missing. Please check environment variables.");
+  }
+}
+
 import { 
   UserProfile, 
   Product, 
