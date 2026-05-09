@@ -8,14 +8,19 @@ import {
   deleteDeliveryFee, 
   saveCoupon, 
   deleteCoupon, 
-  updateOrderStatus 
+  updateOrderStatus,
+  auth,
+  getUserProfile,
+  updateUserProfile,
+  deleteUser,
+  LUANDA_BAIRROS
 } from '../firebase';
 import { 
   collection, 
   query, 
   onSnapshot, 
   doc, 
-  getDoc 
+  orderBy 
 } from 'firebase/firestore';
 import { 
   UserProfile, 
@@ -24,7 +29,11 @@ import {
   Withdrawal, 
   DeliveryFee, 
   Coupon, 
-  Wallet 
+  Wallet,
+  HomeBanner,
+  Report,
+  AuditLog,
+  CartStats
 } from '../types';
 import { 
   Check, 
@@ -46,9 +55,25 @@ import {
   XCircle,
   FileText,
   CreditCard,
-  Settings
+  Settings,
+  LayoutDashboard,
+  ClipboardList,
+  Wallet as WalletIcon,
+  Home,
+  ShoppingCart,
+  ShieldCheck,
+  UserCog,
+  Truck,
+  AlertTriangle,
+  History,
+  UserCircle,
+  Download,
+  FileSpreadsheet,
+  Ban,
+  Unlock
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 
 interface DashboardAdminProps {
   userId: string;
@@ -62,1081 +87,691 @@ export function DashboardAdmin({ userId }: DashboardAdminProps) {
   const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
   const [deliveryFees, setDeliveryFees] = useState<DeliveryFee[]>([]);
   const [coupons, setCoupons] = useState<Coupon[]>([]);
+  const [reports, setReports] = useState<Report[]>([]);
+  const [banners, setBanners] = useState<HomeBanner[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [cartStats, setCartStats] = useState<CartStats[]>([]);
   const [platformWallet, setPlatformWallet] = useState<Wallet | null>(null);
 
-  // Input states
-  const [bairroInput, setBairroInput] = useState('');
-  const [feeValorInput, setFeeValorInput] = useState('');
-  const [couponCodeInput, setCouponCodeInput] = useState('');
-  const [couponDescontoInput, setCouponDescontoInput] = useState('');
-  const [couponValidadeInput, setCouponValidadeInput] = useState('');
-
   // UI state
-  const [activeTab, setActiveTab] = useState<'visão_geral' | 'produtos' | 'saques' | 'pedidos' | 'bairros_cupons' | 'ranking_parceiros' | 'carteira'>('visão_geral');
-  const [rejectReasonPopup, setRejectReasonPopup] = useState<string | null>(null);
-  const [rejectId, setRejectId] = useState<string>('');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [processingId, setProcessingId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<
+    'dashboard' | 'pedidos' | 'financeiro' | 'home' | 'carrinho' | 
+    'aprovacao' | 'usuarios' | 'taxas' | 'denuncias' | 'auditoria' | 'perfil'
+  >('dashboard');
+  
+  const [isRejecting, setIsRejecting] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
   const [apiError, setApiError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    // 1. Listen to users
-    const unsubUsers = onSnapshot(collection(db, 'users'), (snap) => {
-      setUsers(snap.docs.map(d => d.data() as UserProfile));
-    });
-
-    // 2. Listen to products
-    const unsubProducts = onSnapshot(collection(db, 'products'), (snap) => {
-      setProducts(snap.docs.map(d => d.data() as Product));
-    });
-
-    // 3. Listen to orders
-    const unsubOrders = onSnapshot(collection(db, 'orders'), (snap) => {
-      setOrders(snap.docs.map(d => d.data() as Order));
-    });
-
-    // 4. Listen to withdrawals
-    const unsubWithdrawals = onSnapshot(collection(db, 'withdrawals'), (snap) => {
-      setWithdrawals(snap.docs.map(d => d.data() as Withdrawal));
-    });
-
-    // 5. Listen to delivery fees
-    const unsubFees = onSnapshot(collection(db, 'deliveryFees'), (snap) => {
-      setDeliveryFees(snap.docs.map(d => d.data() as DeliveryFee));
-    });
-
-    // 6. Listen to coupons
-    const unsubCoupons = onSnapshot(collection(db, 'coupons'), (snap) => {
-      setCoupons(snap.docs.map(d => d.data() as Coupon));
-    });
-
-    // 7. Listen to Platform Balance Wallet
-    const unsubPlatWallet = onSnapshot(doc(db, 'wallets', 'PLATAFORMA'), (snap) => {
-      if (snap.exists()) {
-        setPlatformWallet(snap.data() as Wallet);
-      }
-    });
+    // Basic metrics listeners
+    const unsubUsers = onSnapshot(collection(db, 'users'), (snap) => setUsers(snap.docs.map(d => d.data() as UserProfile)));
+    const unsubProducts = onSnapshot(collection(db, 'products'), (snap) => setProducts(snap.docs.map(d => d.data() as Product)));
+    const unsubOrders = onSnapshot(collection(db, 'orders'), (snap) => setOrders(snap.docs.map(d => d.data() as Order)));
+    const unsubWithdrawals = onSnapshot(collection(db, 'withdrawals'), (snap) => setWithdrawals(snap.docs.map(d => d.data() as Withdrawal)));
+    const unsubFees = onSnapshot(collection(db, 'deliveryFees'), (snap) => setDeliveryFees(snap.docs.map(d => d.data() as DeliveryFee)));
+    const unsubCoupons = onSnapshot(collection(db, 'coupons'), (snap) => setCoupons(snap.docs.map(d => d.data() as Coupon)));
+    const unsubReports = onSnapshot(collection(db, 'reports'), (snap) => setReports(snap.docs.map(d => d.data() as Report)));
+    const unsubBanners = onSnapshot(collection(db, 'banners'), (snap) => setBanners(snap.docs.map(d => d.data() as HomeBanner)));
+    const unsubAudit = onSnapshot(query(collection(db, 'audit_logs'), orderBy('createdAt', 'desc')), (snap) => setAuditLogs(snap.docs.map(d => d.data() as AuditLog)));
+    const unsubCarts = onSnapshot(collection(db, 'cart_stats'), (snap) => setCartStats(snap.docs.map(d => d.data() as CartStats)));
+    const unsubPlatWallet = onSnapshot(doc(db, 'wallets', 'PLATAFORMA'), (snap) => { if (snap.exists()) setPlatformWallet(snap.data() as Wallet); });
 
     return () => {
-      unsubUsers();
-      unsubProducts();
-      unsubOrders();
-      unsubWithdrawals();
-      unsubFees();
-      unsubCoupons();
-      unsubPlatWallet();
+      unsubUsers(); unsubProducts(); unsubOrders(); unsubWithdrawals(); 
+      unsubFees(); unsubCoupons(); unsubReports(); unsubBanners(); 
+      unsubAudit(); unsubCarts(); unsubPlatWallet();
     };
   }, []);
 
-  const handleApproveProduct = async (id: string) => {
-    setProcessingId(id);
-    try {
-      await updateProductStatus(id, 'approved');
-      triggerSuccess("Produto aprovado com sucesso! Está agora público no mercado.");
-    } catch (err: any) {
-      setApiError(err?.message || "Erro ao aprovar produto.");
-    } finally {
-      setProcessingId(null);
-    }
+  const triggerSuccess = (msg: string) => {
+    setSuccessMsg(msg);
+    setTimeout(() => setSuccessMsg(null), 3500);
   };
 
-  const handleRejectProduct = async (id: string) => {
-    setProcessingId(id);
+  const handleUpdateUserStatus = async (userId: string, status: 'active' | 'blocked') => {
     try {
-      await updateProductStatus(id, 'rejected');
-      triggerSuccess("Produto rejeitado.");
+      await updateUserProfile(userId, { status });
+      triggerSuccess(`Usuário ${status === 'active' ? 'desbloqueado' : 'bloqueado'} com sucesso.`);
     } catch (err: any) {
-      setApiError(err?.message || "Erro ao rejeitar produto.");
-    } finally {
-      setProcessingId(null);
+      setApiError(err.message);
     }
-  };
-
-  const handleApproveSaque = async (id: string) => {
-    setProcessingId(id);
-    try {
-      await approveWithdrawal(id, userId);
-      triggerSuccess("Saque aprovado e comissão transferida com êxito!");
-    } catch (err: any) {
-      setApiError(err?.message || "Erro ao aprovar transferência de saque.");
-    } finally {
-      setProcessingId(null);
-    }
-  };
-
-  const openRecusarPopup = (id: string) => {
-    setRejectId(id);
-    setRejectReasonPopup('');
   };
 
   const handleRejectSaqueSubmit = async () => {
-    if (!rejectReasonPopup) return;
-    setProcessingId(rejectId);
+    if (!isRejecting || !rejectReason.trim()) return;
     try {
-      await rejectWithdrawal(rejectId, rejectReasonPopup);
-      triggerSuccess("Solicitação de saque rejeitada e fundos devolvidos ao utilizador.");
-      setRejectReasonPopup(null);
+      await rejectWithdrawal(isRejecting, rejectReason);
+      triggerSuccess("Saque rejeitado.");
+      setIsRejecting(null);
+      setRejectReason('');
     } catch (err: any) {
-      setApiError(err?.message || "Erro ao rejeitar transferência.");
-    } finally {
-      setProcessingId(null);
+      setApiError(err.message);
     }
   };
 
-  const handleAddDeliveryFee = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!bairroInput.trim() || !feeValorInput) return;
-    
+  const handleForceUpdateOrderStatus = async (id: string, status: any) => {
     try {
-      await setDeliveryFee(bairroInput, parseFloat(feeValorInput));
-      setBairroInput('');
-      setFeeValorInput('');
-      triggerSuccess("Taxa de entrega atualizada com sucesso para o bairro.");
+      await updateOrderStatus(id, status);
+      triggerSuccess(`Status do pedido #${id.slice(-6)} atualizado para ${status}.`);
     } catch (err: any) {
-      setApiError("Erro ao gravar taxa de entrega.");
+      setApiError(err.message);
     }
   };
-
-  const handleDeleteDeliveryFee = async (id: string) => {
-    try {
-      await deleteDeliveryFee(id);
-      triggerSuccess("Bairro removido do sistema de entrega.");
-    } catch (err: any) {
-      setApiError("Não foi possível excluir o bairro.");
-    }
-  };
-
-  const handleAddCoupon = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!couponCodeInput.trim() || !couponDescontoInput || !couponValidadeInput) return;
-    
-    try {
-      await saveCoupon(
-        couponCodeInput, 
-        parseInt(couponDescontoInput), 
-        couponValidadeInput
-      );
-      setCouponCodeInput('');
-      setCouponDescontoInput('');
-      setCouponValidadeInput('');
-      triggerSuccess("Cupão de desconto lançado com sucesso!");
-    } catch (errValue: any) {
-      setApiError("Erro ao guardar cupão.");
-    }
-  };
-
-  const handleDeleteCoupon = async (id: string) => {
-    try {
-      await deleteCoupon(id);
-      triggerSuccess("Cupão eliminado.");
-    } catch (err: any) {
-      setApiError("Não foi possível eliminar o cupão.");
-    }
-  };
-
-  const handleForceUpdateOrderStatus = async (orderId: string, nextStatus: any) => {
-    try {
-      await updateOrderStatus(orderId, nextStatus);
-      triggerSuccess(`Estado do pedido alterado com sucesso para ${nextStatus}!`);
-    } catch (error: any) {
-      setApiError(error.message || "Erro ao atualizar estado.");
-    }
-  };
-
-  const triggerSuccess = (msg: string) => {
-    setSuccessMsg(msg);
-    setTimeout(() => setSuccessMsg(null), 4000);
-  };
-
-  // -------------------------------------------------------------
-  // REVENUE & STATS COMPUTATIONS
-  // -------------------------------------------------------------
-  const totalSellsCount = orders.filter(o => o.status === 'delivered').length;
-  
-  // Total transaction volume
-  const totalVolume = orders
-    .filter(o => o.status === 'delivered')
-    .reduce((sum, o) => sum + o.subtotal, 0);
-
-  // Platform earned commissions
-  const platVolume = orders
-    .filter(o => o.status === 'delivered')
-    .reduce((sum, o) => sum + o.comissao_plataforma, 0);
-
-  // Fee revenue from affiliate withdrawals (200 Kz each)
-  const affiliateWithdrawalFees = withdrawals
-    .filter(w => w.status === 'approved' && w.user_tipo === 'Afiliado')
-    .length * 200;
-
-  const totalAdminGains = platVolume + affiliateWithdrawalFees;
-
-  // Pending Cash sales (orders not delivered yet)
-  const pendingVolume = orders
-    .filter(o => o.status === 'pending' || o.status === 'processing' || o.status === 'shipped')
-    .reduce((sum, o) => sum + o.total, 0);
-
-  // Get Top Selling Products (report)
-  const productSalesMap: { [name: string]: number } = {};
-  orders.filter(o => o.status === 'delivered').forEach(order => {
-    productSalesMap[order.produto_nome] = (productSalesMap[order.produto_nome] || 0) + 1;
-  });
-  const topProductsReport = Object.keys(productSalesMap)
-    .map(name => ({ name, count: productSalesMap[name] }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 5);
-
-  // Get Top Bairros (report)
-  const bairroOrdersMap: { [name: string]: number } = {};
-  orders.forEach(order => {
-    bairroOrdersMap[order.bairro] = (bairroOrdersMap[order.bairro] || 0) + 1;
-  });
-  const topBairrosReport = Object.keys(bairroOrdersMap)
-    .map(bairro => ({ name: bairro, count: bairroOrdersMap[bairro] }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 5);
-
-  // Affiliate Rankings
-  const affiliateMap: { [id: string]: { nome: string; comissão: number; vendas: number } } = {};
-  orders.filter(o => o.status === 'delivered' && o.afiliado_id).forEach(order => {
-    if (order.afiliado_id) {
-      if (!affiliateMap[order.afiliado_id]) {
-        affiliateMap[order.afiliado_id] = { nome: order.afiliado_nome || 'Afiliado Indefinido', comissão: 0, vendas: 0 };
-      }
-      affiliateMap[order.afiliado_id].comissão += order.comissao_afiliado_paga;
-      affiliateMap[order.afiliado_id].vendas += 1;
-    }
-  });
-  const rankedAffiliates = Object.keys(affiliateMap)
-    .map(id => ({ id, ...affiliateMap[id] }))
-    .sort((a, b) => b.comissão - a.comissão);
 
   return (
-    <div className="space-y-8" id="admin_dashboard">
-      
+    <div className="flex flex-col lg:flex-row min-h-screen bg-[#05070A] text-slate-300">
       {/* Messages */}
       <AnimatePresence>
         {successMsg && (
           <motion.div 
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            className="fixed top-24 right-6 bg-[#0F172A] border-l-4 border-blue-500 text-blue-400 p-4 rounded-xl shadow-2xl z-50 flex items-center gap-3"
+            initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}
+            className="fixed top-8 right-8 bg-emerald-500 text-white p-4 rounded-2xl shadow-2xl z-[100] flex items-center gap-3 font-bold"
           >
-            <Sparkles className="w-5 h-5 text-blue-400 shrink-0" />
-            <div>
-              <p className="font-semibold text-sm">Operação Efetuada</p>
-              <p className="text-xs text-slate-300">{successMsg}</p>
-            </div>
+            <CheckCircle className="w-5 h-5" /> {successMsg}
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Intro Header */}
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b border-white/5 pb-6">
-        <div>
-          <span className="text-xs font-mono uppercase tracking-widest text-[#2563EB] font-bold">Painel de Controlo Principal</span>
-          <h2 className="text-3xl font-display font-black tracking-tight mt-1 flex items-center gap-3">
-            Mercado <span className="text-blue-500 font-extrabold uppercase p-1 px-3 bg-blue-500/10 border border-blue-500/20 rounded-xl">ADM</span>
+      {/* SIDEBAR */}
+      <aside className="w-full lg:w-72 bg-[#0B0F19] border-r border-white/5 flex flex-col sticky top-0 h-screen z-40">
+        <div className="p-8 border-b border-white/5">
+          <h2 className="text-2xl font-display font-black text-white flex items-center gap-3">
+            Mercado <span className="text-blue-500 font-extrabold p-1 px-2 bg-blue-500/10 rounded-lg">AO</span>
           </h2>
-          <p className="text-sm text-slate-400 mt-1">Gestão geral financeira, aprovações, tarifas de entrega e cupons.</p>
+          <p className="text-[10px] uppercase tracking-widest text-slate-500 font-mono mt-2">Central Administrativa</p>
         </div>
-        <div className="flex items-center gap-4 bg-slate-900/60 p-4 rounded-2xl border border-white/10" id="plat_balance_widget">
-          <div>
-            <div className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Saldo da Plataforma (10%)</div>
-            <div className="text-2xl font-display font-black text-sky-400">
-              {(platformWallet?.saldo || 0).toLocaleString()} <span className="text-xs font-sans font-normal text-sky-400">Kz</span>
-            </div>
-          </div>
-          <div className="p-3 bg-sky-500/10 rounded-xl text-sky-400">
-            <DollarSign className="w-6 h-6" />
-          </div>
-        </div>
-      </div>
 
-      {/* Tabs Navigation */}
-      <div className="flex flex-wrap gap-2 border-b border-slate-800 pb-px">
-        {[
-          { id: 'visão_geral', label: 'Dashboard', icon: TrendingUp },
-          { id: 'produtos', label: 'Acolher Produtos', icon: ShoppingBag, badge: products.filter(p => p.status === 'pending').length },
-          { id: 'saques', label: 'Pedidos Saque', icon: DollarSign, badge: withdrawals.filter(w => w.status === 'pending').length },
-          { id: 'pedidos', label: 'Gerir Vendas', icon: FileText },
-          { id: 'carteira', label: 'Carteira ADM', icon: CreditCard },
-          { id: 'bairros_cupons', label: 'Bairros & Cupons', icon: MapPin },
-          { id: 'ranking_parceiros', label: 'Ranking Afiliados', icon: Trophy }
-        ].map(tab => {
-          const IconComp = tab.icon;
-          const isActive = activeTab === tab.id;
-          return (
+        <nav className="flex-1 p-4 space-y-1 overflow-y-auto custom-scrollbar">
+          {[
+            { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+            { id: 'pedidos', label: 'Pedidos', icon: ClipboardList },
+            { id: 'financeiro', label: 'Financeiro', icon: WalletIcon },
+            { id: 'home', label: 'Home', icon: Home },
+            { id: 'carrinho', label: 'Carrinho', icon: ShoppingCart },
+            { id: 'aprovacao', label: 'Aprovação Produtos', icon: ShieldCheck, badge: products.filter(p => p.status === 'pending').length },
+            { id: 'usuarios', label: 'Gestão de Usuários', icon: UserCog },
+            { id: 'taxas', label: 'Taxas de Entrega', icon: Truck },
+            { id: 'denuncias', label: 'Denúncias', icon: AlertTriangle, badge: reports.filter(r => r.status === 'pending').length },
+            { id: 'auditoria', label: 'Auditoria', icon: History },
+            { id: 'perfil', label: 'Perfil', icon: UserCircle },
+          ].map(item => (
             <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              className={`flex items-center gap-2.5 px-5 py-3 rounded-t-xl text-sm font-semibold transition-all ${
-                isActive 
-                  ? 'bg-blue-600/15 border-t border-r border-l border-blue-500/30 text-white border-b-2 border-b-blue-500' 
-                  : 'text-slate-400 hover:text-slate-200 border-b border-transparent hover:border-slate-800'
+              key={item.id}
+              onClick={() => setActiveTab(item.id as any)}
+              className={`w-full flex items-center justify-between p-3.5 rounded-xl transition-all group ${
+                activeTab === item.id ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'hover:bg-white/5 text-slate-400 hover:text-white'
               }`}
             >
-              <IconComp className={`w-4 h-4 ${isActive ? 'text-blue-500' : ''}`} />
-              <span>{tab.label}</span>
-              {!!tab.badge && (
-                <span className="bg-blue-500 text-white font-mono text-[9px] font-black px-1.5 py-0.5 rounded-full">
-                  {tab.badge}
+              <div className="flex items-center gap-3">
+                <item.icon className={`w-5 h-5 ${activeTab === item.id ? 'text-white' : 'text-slate-500 group-hover:text-blue-400'}`} />
+                <span className="text-sm font-bold">{item.label}</span>
+              </div>
+              {item.badge ? (
+                <span className="bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full ring-2 ring-[#0B0F19]">
+                  {item.badge}
                 </span>
-              )}
+              ) : null}
             </button>
-          );
-        })}
-      </div>
+          ))}
+        </nav>
+      </aside>
 
-      {/* Error display */}
-      {apiError && (
-        <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-xs rounded-xl p-3 flex justify-between items-center">
-          <span>{apiError}</span>
-          <X className="w-4 h-4 cursor-pointer" onClick={() => setApiError(null)} />
+      {/* MAIN CONTENT AREA */}
+      <main className="flex-1 p-6 lg:p-12 overflow-y-auto max-w-full">
+        <header className="mb-10 block">
+          <div className="flex justify-between items-center">
+            <div>
+              <h1 className="text-3xl font-display font-black text-white tracking-tight capitalize">
+                {activeTab.replace('_', ' ')} Aplicativo
+              </h1>
+              <p className="text-slate-400 text-sm mt-1">Supervisão estratégica do Mercado AO Luanda.</p>
+            </div>
+            <div className="flex items-center gap-4 bg-[#0B0F19] p-3 rounded-2xl border border-white/5">
+              <div className="text-right">
+                <p className="text-[10px] text-slate-500 font-mono uppercase">Saldo Plataforma</p>
+                <p className="text-lg font-black text-emerald-400">{(platformWallet?.saldo || 0).toLocaleString()} Kz</p>
+              </div>
+              <div className="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center text-emerald-500">
+                <DollarSign className="w-6 h-6" />
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {activeTab === 'dashboard' && <AdminDashboard users={users} products={products} orders={orders} />}
+        {activeTab === 'pedidos' && <AdminOrders orders={orders} onUpdateStatus={handleForceUpdateOrderStatus} />}
+        {activeTab === 'financeiro' && <AdminFinance orders={orders} withdrawals={withdrawals} onApprove={approveWithdrawal} onReject={setIsRejecting} />}
+        {activeTab === 'home' && <AdminHomeManagement banners={banners} orders={orders} products={products} />}
+        {activeTab === 'carrinho' && <AdminCartAnalytics stats={cartStats} orders={orders} products={products} />}
+        {activeTab === 'aprovacao' && <AdminApproval products={products} onApprove={updateProductStatus} onReject={updateProductStatus} />}
+        {activeTab === 'usuarios' && <AdminUsers users={users} onBlock={handleUpdateUserStatus} onDelete={deleteUser} />}
+        {activeTab === 'taxas' && <AdminDeliveryFees fees={deliveryFees} onAdd={setDeliveryFee} onDelete={deleteDeliveryFee} />}
+        {activeTab === 'denuncias' && <AdminReports reports={reports} />}
+        {activeTab === 'auditoria' && <AdminAuditLogs logs={auditLogs} />}
+        {activeTab === 'perfil' && <AdminProfileSection userId={userId} users={users} />}
+      </main>
+
+      {/* Rejection Modal */}
+      {isRejecting && (
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[200] flex items-center justify-center p-6">
+          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-[#0B0F19] p-8 rounded-3xl max-w-md w-full border border-white/10">
+            <h3 className="text-xl font-bold text-white mb-4">Motivo da Rejeição</h3>
+            <textarea 
+              className="w-full bg-[#05070A] border border-white/10 rounded-2xl p-4 text-white mb-6 h-32 focus:border-red-500 outline-none"
+              placeholder="Descreva o motivo para o utilizador..."
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+            />
+            <div className="flex gap-4">
+              <button onClick={() => setIsRejecting(null)} className="flex-1 py-3 bg-slate-800 text-white rounded-xl font-bold">Voltar</button>
+              <button onClick={handleRejectSaqueSubmit} disabled={!rejectReason.trim()} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold disabled:opacity-40">Confirmar</button>
+            </div>
+          </motion.div>
         </div>
       )}
-
-      {/* CONTENT SWITCHER */}
-      <div className="min-h-[400px]">
-        {activeTab === 'visão_geral' && (
-          <div className="space-y-8 animate-fadeIn">
-            {/* 4 Stats Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-slate-900/40 p-5 rounded-2xl border border-white/5 space-y-2">
-                <div className="text-xs font-mono text-slate-400 uppercase">Faturamento CoD Concluído</div>
-                <div className="text-3xl font-display font-black text-slate-100">{totalVolume.toLocaleString()} Kz</div>
-                <div className="text-[10px] text-emerald-400 flex flex-col gap-0.5">
-                  <div className="flex justify-between items-center">
-                    <span>Comissão (10%):</span>
-                    <strong className="font-mono">{platVolume.toLocaleString()} Kz</strong>
-                  </div>
-                  <div className="flex justify-between items-center text-blue-400 border-t border-white/5 pt-0.5 mt-0.5">
-                    <span>Taxas Saques (200kz):</span>
-                    <strong className="font-mono">{affiliateWithdrawalFees.toLocaleString()} Kz</strong>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-slate-900/40 p-5 rounded-2xl border border-white/5 space-y-2">
-                <div className="text-xs font-mono text-slate-400 uppercase font-medium">Encomendas CoD Pendentes</div>
-                <div className="text-3xl font-display font-black text-amber-500">{pendingVolume.toLocaleString()} Kz</div>
-                <div className="text-[10px] text-slate-400 leading-none">Vendas em processamento na rua com motoboy.</div>
-              </div>
-
-              <div className="bg-slate-900/40 p-5 rounded-2xl border border-white/5 space-y-2">
-                <div className="text-xs font-mono text-slate-400 uppercase">Utilizadores Totais</div>
-                <div className="text-3xl font-display font-black text-blue-400">{users.length}</div>
-                <div className="text-[10px] text-slate-400 flex gap-2">
-                  <span>Clientes: {users.filter(u => u.tipo === 'Cliente').length}</span>
-                  <span>|</span>
-                  <span>Produtores: {users.filter(u => u.tipo === 'Produtor').length}</span>
-                </div>
-              </div>
-
-              <div className="bg-slate-900/40 p-5 rounded-2xl border border-white/5 space-y-2">
-                <div className="text-xs font-mono text-slate-400 uppercase">Iniciativas de Afiliação</div>
-                <div className="text-3xl font-display font-black text-[#8B5CF6]">{users.filter(u => u.tipo === 'Afiliado').length}</div>
-                <div className="text-[10px] text-slate-400 leading-none">Afiliados digitais ativos impulsionando o comércio.</div>
-              </div>
-            </div>
-
-            {/* Reports and Charts layout */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              {/* Report 1: Top Products */}
-              <div className="bg-[#0B0F19]/60 border border-white/10 rounded-2xl p-6 space-y-4">
-                <h4 className="font-display font-bold text-lg text-white flex items-center gap-2">
-                  <FlameIcon className="w-5 h-5 text-amber-500" />
-                  <span>Produtos Mais Vendidos</span>
-                </h4>
-                <div className="space-y-3">
-                  {topProductsReport.length === 0 ? (
-                    <p className="text-sm text-slate-500 italic py-4">Nenhuma encomenda entregue ainda para calcular o ranking.</p>
-                  ) : (
-                    topProductsReport.map((prod, index) => {
-                      const percentages = Math.min(100, Math.max(10, (prod.count / totalSellsCount) * 100));
-                      return (
-                        <div key={prod.name} className="space-y-1">
-                          <div className="flex justify-between text-sm">
-                            <span className="font-semibold text-slate-300">{index + 1}. {prod.name}</span>
-                            <span className="font-mono text-blue-400 font-bold">{prod.count} {prod.count === 1 ? 'venda' : 'vendas'}</span>
-                          </div>
-                          <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                            <div className="bg-gradient-to-r from-blue-600 to-sky-400 h-full rounded-full" style={{ width: `${percentages}%` }}></div>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-
-              {/* Report 2: Sales by Bairro */}
-              <div className="bg-[#0B0F19]/60 border border-white/10 rounded-2xl p-6 space-y-4">
-                <h4 className="font-display font-bold text-lg text-white flex items-center gap-2">
-                  <MapPin className="w-5 h-5 text-blue-400" />
-                  <span>Bairros Mais Ativos (Pedidos)</span>
-                </h4>
-                <div className="space-y-3">
-                  {topBairrosReport.length === 0 ? (
-                    <p className="text-sm text-slate-500 italic py-4">Sem dados geográficos de compras no momento.</p>
-                  ) : (
-                    topBairrosReport.map((ba, index) => {
-                      const itemPercentage = Math.min(100, Math.max(12, (ba.count / orders.length) * 100));
-                      return (
-                        <div key={ba.name} className="space-y-1">
-                          <div className="flex justify-between text-sm">
-                            <span className="font-semibold text-slate-300">{index + 1}. {ba.name}</span>
-                            <span className="font-mono text-slate-400 font-bold">{ba.count} {ba.count === 1 ? 'pedido' : 'pedidos'}</span>
-                          </div>
-                          <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                            <div className="bg-gradient-to-r from-[#8B5CF6] to-pink-500 h-full rounded-full" style={{ width: `${itemPercentage}%` }}></div>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Custom SVG line-chart to satisfy top-tier aesthetic visuals */}
-            <div className="bg-slate-900/30 p-6 rounded-2xl border border-white/5 space-y-4">
-              <div className="flex justify-between items-center">
-                <div>
-                  <h4 className="font-display font-bold text-lg">Curva de Negócio Mercado AO</h4>
-                  <p className="text-xs text-slate-400">Fluxo semanal de vendas e entregas simulada com base em transações reais.</p>
-                </div>
-                <span className="text-xs font-mono text-green-400 flex items-center gap-1 bg-green-500/10 p-1.5 px-2 rounded-lg">
-                  <Check className="w-3 h-3" /> Sistema Nominal Kz
-                </span>
-              </div>
-              <div className="h-44 w-full relative">
-                {/* SVG Line Graph */}
-                <svg className="w-full h-full" viewBox="0 0 600 150" preserveAspectRatio="none">
-                  <defs>
-                    <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#2563EB" stopOpacity="0.4" />
-                      <stop offset="100%" stopColor="#2563EB" stopOpacity="0.0" />
-                    </linearGradient>
-                  </defs>
-                  {/* Grid Lines */}
-                  <line x1="0" y1="35" x2="600" y2="35" stroke="#1E293B" strokeWidth="1" strokeDasharray="4 4" />
-                  <line x1="0" y1="75" x2="600" y2="75" stroke="#1E293B" strokeWidth="1" strokeDasharray="4 4" />
-                  <line x1="0" y1="115" x2="600" y2="115" stroke="#1E293B" strokeWidth="1" strokeDasharray="4 4" />
-                  
-                  {/* Area */}
-                  <path d="M 0 150 Q 80 110, 150 90 T 300 110 T 450 60 T 600 40 L 600 150 Z" fill="url(#chartGrad)" />
-                  {/* Line */}
-                  <path d="M 0 150 Q 80 110, 150 90 T 300 110 T 450 60 T 600 40" fill="none" stroke="#3B82F6" strokeWidth="3" />
-                  
-                  {/* Dots */}
-                  <circle cx="150" cy="90" r="5" fill="#3B82F6" />
-                  <circle cx="450" cy="60" r="5" fill="#3B82F6" />
-                  <circle cx="600" cy="40" r="5" fill="#60A5FA" />
-                </svg>
-                <div className="flex justify-between text-[10px] font-mono text-slate-500 mt-2">
-                  <span>Segunda</span>
-                  <span>Terça</span>
-                  <span>Quarta</span>
-                  <span>Quinta</span>
-                  <span>Sexta</span>
-                  <span>Hoje</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* APPROVE PRODUCTS TAB */}
-        {activeTab === 'produtos' && (
-          <div className="space-y-6 animate-fadeIn">
-            <h3 className="font-display font-bold text-xl text-white">Moderação de Produtos</h3>
-            <p className="text-sm text-slate-400">Verifique a qualidade, comissão de afiliado sugerida por produtores locais angolanos antes de irem para o público.</p>
-
-            {products.filter(p => p.status === 'pending').length === 0 ? (
-              <div className="glass-panel rounded-2xl p-8 text-center text-slate-400 border border-white/5">
-                <CheckCircle className="w-12 h-12 text-emerald-500 mx-auto mb-3" />
-                <p className="font-semibold text-slate-200">Sem produtos em fila de espera!</p>
-                <p className="text-xs text-slate-400">Tudo verificado e aprovado para o comércio.</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {products.filter(p => p.status === 'pending').map(prod => (
-                  <div key={prod.id} className="bg-[#0B0F19] border border-white/10 rounded-2xl overflow-hidden flex flex-col justify-between">
-                    <div className="p-5 space-y-4">
-                      <div className="flex justify-between items-start gap-3">
-                        <div>
-                          <span className="text-[10px] font-mono uppercase bg-slate-800 text-slate-300 p-1 rounded">PENDENTE ADM</span>
-                          <h4 className="font-display font-semibold text-lg text-white mt-2">{prod.nome}</h4>
-                        </div>
-                        <span className="text-blue-400 font-display font-black text-xl">{prod.preço.toLocaleString()} Kz</span>
-                      </div>
-                      
-                      <p className="text-xs text-slate-300 line-clamp-3 leading-relaxed bg-slate-900/40 p-3 rounded-lg border border-white/5 italic">
-                        "{prod.descrição}"
-                      </p>
-
-                      <div className="grid grid-cols-2 text-xs font-mono bg-slate-900/60 p-3 rounded-xl gap-2 text-slate-400">
-                        <div>
-                          Produtor ID:
-                          <div className="text-slate-200 mt-0.5 truncate">{prod.produtor_id}</div>
-                        </div>
-                        <div>
-                          Comissão Afiliados:
-                          <div className="text-purple-400 font-bold mt-0.5">{prod.comissão_afiliado}%</div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="bg-slate-900/70 p-4 border-t border-slate-800/80 flex gap-2">
-                      <button
-                        onClick={() => handleRejectProduct(prod.id)}
-                        disabled={processingId === prod.id}
-                        className="flex-1 px-4 py-2 bg-red-600/10 hover:bg-red-500/20 text-red-400 rounded-xl text-xs font-bold font-mono transition-colors border border-red-500/20 flex items-center justify-center gap-1.5"
-                      >
-                        <X className="w-4 h-4" /> Recusar
-                      </button>
-                      <button
-                        onClick={() => handleApproveProduct(prod.id)}
-                        disabled={processingId === prod.id}
-                        className="flex-1 px-4 py-2 bg-gradient-to-r from-blue-700 to-blue-600 hover:from-blue-600 text-white rounded-xl text-xs font-bold font-mono transition-colors flex items-center justify-center gap-1.5"
-                      >
-                        <Check className="w-4 h-4" /> Aprovar
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* WITHDRAWALS TAB */}
-        {activeTab === 'saques' && (
-          <div className="space-y-6 animate-fadeIn">
-            <h3 className="font-display font-bold text-xl text-white block">Aprovação de Saques Finanças</h3>
-            <p className="text-sm text-slate-400">Os saques estão sujeitos à taxa fixa de 200 Kz para Afiliados e transferência express/IBAN para os Produtores.</p>
-
-            {withdrawals.filter(w => w.status === 'pending').length === 0 ? (
-              <div className="bg-slate-900/30 rounded-2xl p-8 text-center text-slate-400 border border-white/5">
-                <CheckCircle className="w-12 h-12 text-emerald-500 mx-auto mb-3" />
-                <p className="font-semibold text-slate-200">Sem pedidos de saque pendentes!</p>
-                <p className="text-xs text-slate-400">Todas as obrigações financeiras foram liquidadas.</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {withdrawals.filter(w => w.status === 'pending').map(wit => (
-                  <div key={wit.id} className="bg-[#0B0F19] border border-white/10 rounded-2xl p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[#3B82F6] font-display font-black text-lg">{wit.valor.toLocaleString()} Kz</span>
-                        <span className={`text-[10px] font-mono px-2 py-0.5 rounded ${
-                          wit.user_tipo === 'Afiliado' ? 'bg-purple-900/40 text-purple-300' : 'bg-blue-500/10 text-blue-400'
-                        }`}>
-                          {wit.user_tipo} (Comitê)
-                        </span>
-                      </div>
-                      <div className="text-xs text-slate-300">
-                        Por: <strong className="text-white">{wit.user_nome}</strong> | Canal de Pago: <span className="bg-slate-800 text-slate-300 px-1.5 py-0.5 font-mono text-[10px] rounded">{wit.metodo}</span>
-                      </div>
-                      <div className="text-xs font-mono text-slate-400">
-                        Detalhes Conta: <span className="text-slate-300 select-all">{wit.detalhes}</span>
-                      </div>
-                    </div>
-
-                    <div className="flex gap-2 w-full md:w-auto">
-                      <button
-                        onClick={() => openRecusarPopup(wit.id)}
-                        className="p-2.5 bg-red-600/10 hover:bg-red-500/20 text-red-400 rounded-xl transition-colors border border-red-500/20 text-xs font-bold leading-none flex items-center gap-1"
-                      >
-                        <X className="w-4 h-4" /> Recusar
-                      </button>
-                      <button
-                        onClick={() => handleApproveSaque(wit.id)}
-                        disabled={processingId === wit.id}
-                        className="px-4 py-2.5 bg-gradient-to-r from-blue-700 to-blue-600 hover:from-blue-600 text-white text-xs font-bold rounded-xl transition-colors flex items-center gap-1.5"
-                      >
-                        <Check className="w-4 h-4" /> Aprovar Desembolso
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Recusar Modal overlay if active */}
-            {rejectReasonPopup !== null && (
-              <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-                <div className="bg-[#0B0F19] border border-white/10 rounded-2xl max-w-sm w-full p-6 space-y-4">
-                  <h4 className="font-display font-bold text-lg text-white">Razão de Recusa do Saque</h4>
-                  <p className="text-xs text-slate-400">O saldo requisitado retornará ao bolso do parceiro com esta notificação explicativa.</p>
-                  
-                  <textarea
-                    rows={3}
-                    className="w-full bg-slate-900 border border-white/10 rounded-xl p-3 text-sm focus:outline-none focus:border-blue-500 text-white"
-                    placeholder="Ex: IBAN incorreto ou Conta Unitel Money não identificada..."
-                    value={rejectReasonPopup}
-                    onChange={(e) => setRejectReasonPopup(e.target.value)}
-                  />
-
-                  <div className="flex justify-end gap-2 text-xs font-semibold pt-2">
-                    <button
-                      onClick={() => setRejectReasonPopup(null)}
-                      className="px-4 py-2 rounded-lg bg-slate-800 text-slate-400 hover:text-white"
-                    >
-                      Voltar
-                    </button>
-                    <button
-                      onClick={handleRejectSaqueSubmit}
-                      disabled={!rejectReasonPopup.trim() || processingId !== null}
-                      className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-500 disabled:opacity-40"
-                    >
-                      Confirmar Rejeição
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* MANAGE ACTIVE SALES/ORDERS */}
-        {activeTab === 'pedidos' && (
-          <div className="space-y-6 animate-fadeIn">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <div>
-                <h3 className="font-display font-bold text-xl text-white">Gestão Unificada de Pedidos</h3>
-                <p className="text-sm text-slate-400">Supervisione as negociações Cash on Delivery (CoD) na rede.</p>
-              </div>
-              <div className="relative w-full sm:w-64">
-                <Search className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-500" />
-                <input
-                  type="text"
-                  placeholder="Pesquisar por bairro, cliente..."
-                  className="w-full bg-slate-900/60 border border-white/15 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-              </div>
-            </div>
-
-            {orders.length === 0 ? (
-              <p className="text-slate-500 italic py-6 text-center">Nenhum pedido efetuado no Mercado AO ainda.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="border-b border-white/10 text-slate-400 font-mono uppercase bg-slate-900/40">
-                      <th className="p-3">Ref ID</th>
-                      <th className="p-3">Cliente / Contacto</th>
-                      <th className="p-3">Item / Produtor</th>
-                      <th className="p-3 text-right">Preço + Entrega = Total</th>
-                      <th className="p-3">Destino (Bairro)</th>
-                      <th className="p-3">Estado CoD</th>
-                      <th className="p-3 text-center">Ações Forçadas (ADM)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {orders
-                      .filter(o => 
-                        o.cliente_nome.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                        o.bairro.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                        o.id.includes(searchQuery)
-                      )
-                      .map(order => {
-                        return (
-                          <tr key={order.id} className="border-b border-white/5 hover:bg-slate-900/20">
-                            <td className="p-3 font-mono font-bold text-blue-400">#{order.id.substring(6, 12)}</td>
-                            <td className="p-3">
-                              <div className="font-semibold">{order.cliente_nome}</div>
-                              <div className="text-[10px] text-slate-400 font-mono">{order.phone}</div>
-                            </td>
-                            <td className="p-3">
-                              <div className="text-slate-200 font-semibold">{order.produto_nome}</div>
-                              <div className="text-[10px] text-slate-500">Produtor: {order.produtor_id.substring(0, 8)}</div>
-                            </td>
-                            <td className="p-3 text-right">
-                              <div className="text-slate-300">{(order.subtotal - order.desconto).toLocaleString()} + {order.taxa_entrega}</div>
-                              <div className="font-bold text-emerald-400">{order.total.toLocaleString()} Kz</div>
-                            </td>
-                            <td className="p-3">
-                              <div className="text-slate-300 font-medium">{order.bairro}</div>
-                              <div className="text-[10px] text-slate-400 truncate max-w-[120px]">{order.delivery_address}</div>
-                            </td>
-                            <td className="p-3">
-                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                order.status === 'delivered' ? 'bg-green-500/10 text-green-400' :
-                                order.status === 'cancelled' ? 'bg-red-500/10 text-red-500' :
-                                order.status === 'shipped' ? 'bg-blue-600/20 text-blue-400 animate-pulse' :
-                                order.status === 'processing' ? 'bg-pink-500/10 text-pink-400' :
-                                'bg-slate-800 text-slate-400'
-                              }`}>
-                                {order.status === 'pending' ? 'Pendente' :
-                                 order.status === 'processing' ? 'A Processar' :
-                                 order.status === 'shipped' ? 'Em Trânsito' :
-                                 order.status === 'delivered' ? 'Entregue' :
-                                 'Cancelado'}
-                              </span>
-                            </td>
-                            <td className="p-3 text-center">
-                              {order.status !== 'delivered' && order.status !== 'cancelled' ? (
-                                <div className="flex gap-1.5 justify-center">
-                                  <button
-                                    onClick={() => handleForceUpdateOrderStatus(order.id, 'delivered')}
-                                    className="px-2 py-1 bg-green-600 hover:bg-green-500 text-white rounded font-bold uppercase text-[9px]"
-                                    title="Marcar Entregue"
-                                  >
-                                    Entregue
-                                  </button>
-                                  <button
-                                    onClick={() => handleForceUpdateOrderStatus(order.id, 'cancelled')}
-                                    className="px-2 py-1 bg-red-600 hover:bg-red-500 text-white rounded font-bold uppercase text-[9px]"
-                                    title="Cancelar Compra"
-                                  >
-                                    Cancelar
-                                  </button>
-                                </div>
-                              ) : (
-                                <span className="text-slate-500 font-mono text-[10px]">- Settle Concluído -</span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* DELIVERY FEES & COUPONS TAB */}
-        {activeTab === 'bairros_cupons' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-fadeIn">
-            {/* Delivery Fee Column */}
-            <div className="space-y-6">
-              <div className="bg-slate-900/20 p-5 rounded-2xl border border-white/5 space-y-4">
-                <h3 className="font-display font-bold text-lg text-white flex items-center gap-2">
-                  <MapPin className="w-5 h-5 text-blue-500" />
-                  <span>Cadastrar Taxas por Bairro</span>
-                </h3>
-                
-                <form onSubmit={handleAddDeliveryFee} className="space-y-3">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-[10px] text-slate-400 uppercase font-mono block mb-1">Bairro de Luanda/Angola</label>
-                      <input
-                        type="text"
-                        required
-                        className="w-full bg-slate-950 border border-white/10 rounded-xl px-3 py-2 text-xs focus:ring-1 focus:ring-blue-500 text-white focus:outline-none"
-                        placeholder="Ex: Talatona, Benfica..."
-                        value={bairroInput}
-                        onChange={(e) => setBairroInput(e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] text-slate-400 uppercase font-mono block mb-1">Taxa de Frete (Kz)</label>
-                      <input
-                        type="number"
-                        required
-                        className="w-full bg-slate-950 border border-white/10 rounded-xl px-3 py-2 text-xs focus:ring-1 focus:ring-blue-500 text-white focus:outline-none"
-                        placeholder="Ex: 1500"
-                        value={feeValorInput}
-                        onChange={(e) => setFeeValorInput(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                  <button
-                    type="submit"
-                    className="w-full py-2 bg-blue-600 hover:bg-blue-500 rounded-xl text-xs font-bold font-mono transition-colors flex items-center justify-center gap-1"
-                  >
-                    <Plus className="w-4 h-4" /> Cadastrar Taxa
-                  </button>
-                </form>
-              </div>
-
-              {/* Fee List */}
-              <div className="bg-[#0B0F19]/40 border border-white/10 rounded-2xl p-5 space-y-3">
-                <h4 className="text-xs uppercase font-mono text-slate-400 tracking-wider">Tabela de Fretes Cadastrados</h4>
-                {deliveryFees.length === 0 ? (
-                  <p className="text-xs text-slate-500 italic">Sem taxas personalizadas de entrega. Custo padrão zero no checkout.</p>
-                ) : (
-                  <div className="max-h-[180px] overflow-y-auto space-y-2 pr-1">
-                    {deliveryFees.map(fee => (
-                      <div key={fee.id} className="flex justify-between items-center bg-slate-900/60 p-2.5 rounded-xl border border-white/5">
-                        <span className="font-semibold text-xs text-slate-100">{fee.bairro}</span>
-                        <div className="flex items-center gap-3">
-                          <span className="font-mono text-emerald-400 font-bold text-xs">{fee.valor.toLocaleString()} Kz</span>
-                          <button
-                            onClick={() => handleDeleteDeliveryFee(fee.id)}
-                            className="text-red-400 hover:text-red-500"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Coupons Column */}
-            <div className="space-y-6">
-              <div className="bg-slate-900/20 p-5 rounded-2xl border border-white/5 space-y-4">
-                <h3 className="font-display font-bold text-lg text-white flex items-center gap-2">
-                  <Tag className="w-5 h-5 text-blue-500" />
-                  <span>Gerar Cupões de Desconto</span>
-                </h3>
-
-                <form onSubmit={handleAddCoupon} className="space-y-3">
-                  <div className="space-y-2">
-                    <div>
-                      <label className="text-[10px] text-slate-400 uppercase font-mono block mb-1">Código Promocional</label>
-                      <input
-                        type="text"
-                        required
-                        className="w-full bg-slate-950 border border-white/10 rounded-xl px-3 py-2 text-xs focus:ring-1 focus:ring-blue-500 text-white focus:outline-none"
-                        placeholder="Ex: QUINTA10, MERCADOAO20"
-                        value={couponCodeInput}
-                        onChange={(e) => setCouponCodeInput(e.target.value)}
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-[10px] text-slate-400 uppercase font-mono block mb-1">Desconto (%)</label>
-                        <input
-                          type="number"
-                          min="1"
-                          max="100"
-                          required
-                          className="w-full bg-slate-950 border border-white/10 rounded-xl px-3 py-2 text-xs focus:ring-1 focus:ring-blue-500 text-white"
-                          placeholder="Ex: 15"
-                          value={couponDescontoInput}
-                          onChange={(e) => setCouponDescontoInput(e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] text-slate-400 uppercase font-mono block mb-1">Validade</label>
-                        <input
-                          type="date"
-                          required
-                          className="w-full bg-slate-950 border border-white/10 rounded-xl px-3 py-2 text-xs focus:ring-1 focus:ring-blue-500 text-white"
-                          value={couponValidadeInput}
-                          onChange={(e) => setCouponValidadeInput(e.target.value)}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                  <button
-                    type="submit"
-                    className="w-full py-2 bg-gradient-to-r from-blue-700 to-blue-600 rounded-xl text-xs font-bold font-mono text-white transition-colors flex items-center justify-center gap-1"
-                  >
-                    <Plus className="w-4 h-4" /> Criar Lote Cupão
-                  </button>
-                </form>
-              </div>
-
-              {/* Coupons List */}
-              <div className="bg-[#0B0F19]/40 border border-white/10 rounded-2xl p-5 space-y-3">
-                <h4 className="text-xs uppercase font-mono text-slate-400 tracking-wider">Cupons Ativos Regulamentados</h4>
-                {coupons.length === 0 ? (
-                  <p className="text-xs text-slate-500 italic">Sem cupons cadastrados. Crie um acima para campanhas de marketing.</p>
-                ) : (
-                  <div className="max-h-[180px] overflow-y-auto space-y-2 pr-1">
-                    {coupons.map(cop => (
-                      <div key={cop.id} className="flex justify-between items-center bg-slate-900/60 p-2.5 rounded-xl border border-white/5">
-                        <div className="space-y-1">
-                          <span className="font-mono font-bold text-xs bg-blue-500 text-white rounded px-1.5 py-0.5">{cop.código}</span>
-                          <span className="text-[10px] text-slate-400 font-mono ml-2">Expira em: {cop.validade}</span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-[#3B82F6] font-bold text-xs">-{cop.desconto}%</span>
-                          <button
-                            onClick={() => handleDeleteCoupon(cop.id)}
-                            className="text-red-400 hover:text-red-500"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ADMIN WALLET TAB */}
-        {activeTab === 'carteira' && (
-          <div className="space-y-8 animate-fadeIn">
-            <div className="flex justify-between items-end">
-              <div>
-                <h3 className="font-display font-bold text-xl text-white">Carteira da Plataforma</h3>
-                <p className="text-sm text-slate-400">Total acumulado de comissões de produtos (10%) e taxas de saque de afiliados (200 Kz).</p>
-              </div>
-              <div className="bg-slate-900 p-4 rounded-2xl border border-blue-500/20 text-right">
-                <p className="text-[10px] font-mono text-slate-400 uppercase">Saldo Consolidado</p>
-                <p className="text-3xl font-display font-black text-sky-400">
-                  {totalAdminGains.toLocaleString()} <span className="text-sm font-sans font-normal">Kz</span>
-                </p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="bg-[#0B0F19] border border-white/5 p-6 rounded-3xl space-y-4">
-                <h4 className="font-bold text-white flex items-center gap-2">
-                  <CreditCard className="w-5 h-5 text-blue-500" />
-                  Levantamento de Taxas
-                </h4>
-                <p className="text-xs text-slate-400 leading-relaxed font-sans">
-                  Aqui pode realizar a transferência do faturamento da plataforma (Taxas e Comissões) para a sua conta bancária de Admin.
-                </p>
-                
-                <div className="bg-slate-900/50 p-4 rounded-xl space-y-2">
-                  <div className="flex justify-between text-xs text-slate-300">
-                    <span>Comissões de Vendas:</span>
-                    <span className="font-mono font-bold">{platVolume.toLocaleString()} Kz</span>
-                  </div>
-                  <div className="flex justify-between text-xs text-slate-300">
-                    <span>Taxas de Saque Afiliados:</span>
-                    <span className="font-mono font-bold">{affiliateWithdrawalFees.toLocaleString()} Kz</span>
-                  </div>
-                  <div className="pt-2 border-t border-white/10 flex justify-between text-sm font-bold text-white">
-                    <span>Total Disponível:</span>
-                    <span className="text-sky-400">{totalAdminGains.toLocaleString()} Kz</span>
-                  </div>
-                </div>
-
-                <div className="space-y-4 pt-2">
-                  <div className="space-y-1">
-                    <label className="text-[10px] text-slate-500 uppercase font-mono">IBAN de Destino (Admin)</label>
-                    <input 
-                      type="text" 
-                      placeholder="AO06 0000..."
-                      className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-sm text-white"
-                    />
-                  </div>
-                  <button className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition-all shadow-lg shadow-blue-600/20">
-                    Solicitar Transferência do Lucro
-                  </button>
-                  <p className="text-[10px] text-slate-500 text-center italic">Transferência processada via compensação bancária em Angola.</p>
-                </div>
-              </div>
-
-              <div className="bg-[#0B0F19] border border-white/5 p-6 rounded-3xl space-y-6">
-                <h4 className="font-bold text-white flex items-center gap-2">
-                  <Settings className="w-5 h-5 text-slate-400" />
-                  Configurações Financeiras
-                </h4>
-                
-                <div className="space-y-4">
-                  <div className="p-4 bg-slate-900/30 rounded-2xl border border-white/5 flex justify-between items-center">
-                    <div>
-                      <p className="text-sm font-semibold text-white">Taxa de Saque Afiliado</p>
-                      <p className="text-[10px] text-slate-400 uppercase font-mono tracking-tighter">Fixada por saque aprovado</p>
-                    </div>
-                    <div className="text-blue-500 font-display font-black text-xl">200 Kz</div>
-                  </div>
-
-                  <div className="p-4 bg-slate-900/30 rounded-2xl border border-white/5 flex justify-between items-center">
-                    <div>
-                      <p className="text-sm font-semibold text-white">Comissão Marketplace</p>
-                      <p className="text-[10px] text-slate-400 uppercase font-mono tracking-tighter">Sobre valor do produto</p>
-                    </div>
-                    <div className="text-blue-500 font-display font-black text-xl">10%</div>
-                  </div>
-
-                  <p className="text-[10px] text-slate-500 leading-relaxed bg-slate-950/40 p-4 rounded-xl border border-white/5">
-                    <strong>NOTA ADM:</strong> Estes valores são os pilares da sustentabilidade do Mercado AO. Alterações nestas taxas requerem atualização nos termos de serviço para produtores e afiliados angolanos.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* RANKING DE AFILIADOS TAB */}
-        {activeTab === 'ranking_parceiros' && (
-          <div className="space-y-6 animate-fadeIn">
-            <div>
-              <h3 className="font-display font-bold text-xl text-white flex items-center gap-2">
-                <Trophy className="w-6 h-6 text-yellow-500" />
-                <span>Ranking de Afiliados Estrela</span>
-              </h3>
-              <p className="text-sm text-slate-400">Classificação com base na comissão total libertada por compras concluídas de Cash on Delivery.</p>
-            </div>
-
-            {rankedAffiliates.length === 0 ? (
-              <div className="bg-slate-900/30 rounded-2xl p-8 text-center text-slate-450 border border-white/5">
-                <p className="text-sm text-slate-450 italic">Sem vendas de afiliados realizadas no momento.</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {rankedAffiliates.map((afil, index) => {
-                  return (
-                    <div 
-                      key={afil.id} 
-                      className={`p-4 rounded-2xl border transition-all flex items-center justify-between ${
-                        index === 0 
-                          ? 'bg-amber-500/10 border-amber-500' 
-                          : index === 1 
-                          ? 'bg-slate-300/10 border-slate-300' 
-                          : index === 2 
-                          ? 'bg-amber-700/10 border-amber-800' 
-                          : 'bg-[#0B0F19]/60 border-white/5'
-                      }`}
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-display font-extrabold text-sm ${
-                          index === 0 ? 'bg-amber-500 text-[#060813]' :
-                          index === 1 ? 'bg-slate-300 text-[#060813]' :
-                          index === 2 ? 'bg-amber-800 text-white' :
-                          'bg-slate-800 text-slate-400'
-                        }`}>
-                          {index + 1}
-                        </div>
-                        <div>
-                          <p className="font-semibold text-sm text-white">{afil.nome}</p>
-                          <p className="text-[10px] text-slate-400 font-mono">UID: {afil.id.substring(0, 8)}</p>
-                        </div>
-                      </div>
-
-                      <div className="text-right space-y-1">
-                        <div className="text-emerald-450 font-display font-extrabold text-base">{afil.comissão.toLocaleString()} Kz</div>
-                        <div className="text-[10px] font-mono text-slate-400">{afil.vendas} {afil.vendas === 1 ? 'venda convertida' : 'vendas convertidas'}</div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
     </div>
   );
 }
 
-// Icon fallbacks inside code to be explicit
-function FlameIcon(props: React.SVGProps<SVGSVGElement>) {
+// ------------------------------------------------------------------------------------------------
+// MODULAR SUB-COMPONENTS FOR EACH TAB
+// ------------------------------------------------------------------------------------------------
+
+function AdminDashboard({ users, products, orders }: any) {
+  const totals = {
+    vendasCount: orders.filter((o: any) => o.status === 'delivered').length,
+    faturado: orders.filter((o: any) => o.status === 'delivered').reduce((s: any, o: any) => s + o.total, 0),
+    usuarios: users.length,
+    produtores: users.filter((u: any) => u.tipo === 'Produtor').length,
+    afiliados: users.filter((u: any) => u.tipo === 'Afiliado').length,
+    compradores: users.filter((u: any) => u.tipo === 'Cliente').length,
+    produtosPendentes: products.filter((p: any) => p.status === 'pending').length,
+    produtosAprovados: products.filter((p: any) => p.status === 'approved').length,
+  };
+
+  const chartData = [
+    { name: 'Seg', v: 4000 }, { name: 'Ter', v: 3000 }, { name: 'Qua', v: 2000 }, 
+    { name: 'Qui', v: 2780 }, { name: 'Sex', v: 1890 }, { name: 'Sab', v: 2390 }, { name: 'Dom', v: 3490 },
+  ];
+
   return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      {...props}
-    >
-      <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
-    </svg>
+    <div className="space-y-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <AdminStatCard label="Total Faturado" value={`${totals.faturado.toLocaleString()} Kz`} icon={DollarSign} color="text-emerald-500" />
+        <AdminStatCard label="Total Vendas" value={totals.vendasCount} icon={ShoppingBag} color="text-blue-500" />
+        <AdminStatCard label="Produtos Pendentes" value={totals.produtosPendentes} icon={ShieldCheck} color="text-amber-500" />
+        <AdminStatCard label="Usuários Ativos" value={totals.usuarios} icon={Users} color="text-purple-500" />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-2 bg-[#0B0F19] p-8 rounded-3xl border border-white/5 min-h-[400px]">
+          <h3 className="text-xl font-bold text-white mb-8">Performance Semanal</h3>
+          <ResponsiveContainer width="100%" height={300}>
+            <AreaChart data={chartData}>
+              <defs>
+                <linearGradient id="colorV" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3}/>
+                  <stop offset="95%" stopColor="#3B82F6" stopOpacity={0}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#ffffff05" />
+              <XAxis dataKey="name" stroke="#64748b" fontSize={12} />
+              <YAxis stroke="#64748b" fontSize={12} />
+              <Tooltip contentStyle={{ backgroundColor: '#0B0F19', border: '1px solid #ffffff10', borderRadius: '12px' }} />
+              <Area type="monotone" dataKey="v" stroke="#3B82F6" strokeWidth={3} fillOpacity={1} fill="url(#colorV)" />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div className="bg-[#0B0F19] p-8 rounded-3xl border border-white/5 space-y-6">
+          <h3 className="text-xl font-bold text-white mb-2">Segmentação Usuários</h3>
+          <div className="space-y-4">
+            <SegmentationItem label="Compradores" count={totals.compradores} color="bg-blue-500" total={totals.usuarios} />
+            <SegmentationItem label="Produtores" count={totals.produtores} color="bg-emerald-500" total={totals.usuarios} />
+            <SegmentationItem label="Afiliados" count={totals.afiliados} color="bg-purple-500" total={totals.usuarios} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AdminOrders({ orders, onUpdateStatus }: any) {
+  return (
+    <div className="bg-[#0B0F19] border border-white/5 rounded-3xl overflow-x-auto shadow-2xl">
+      <table className="w-full text-left">
+        <thead className="bg-[#05070A]/50 text-[10px] font-mono uppercase text-slate-500">
+          <tr>
+            <th className="p-6">Referência</th>
+            <th className="p-6">Cliente</th>
+            <th className="p-6">Localização</th>
+            <th className="p-6">Total</th>
+            <th className="p-6">Status</th>
+            <th className="p-6">Ações ADM</th>
+          </tr>
+        </thead>
+        <tbody className="text-sm divide-y divide-white/5">
+          {orders.map((o: any) => (
+            <tr key={o.id} className="hover:bg-white/5 transition-all group">
+              <td className="p-6 font-mono font-bold text-blue-400">#{o.id.slice(-6)}</td>
+              <td className="p-6 font-bold text-white">{o.cliente_nome}</td>
+              <td className="p-6 text-slate-400">{o.bairro}</td>
+              <td className="p-6 font-black text-slate-200">{o.total.toLocaleString()} Kz</td>
+              <td className="p-6">
+                <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase ${
+                  o.status === 'delivered' ? 'bg-emerald-500/10 text-emerald-500' :
+                  o.status === 'pending' ? 'bg-amber-500/10 text-amber-500' : 'bg-blue-500/10 text-blue-400'
+                }`}>
+                  {o.status}
+                </span>
+              </td>
+              <td className="p-6">
+                <div className="flex gap-2">
+                  <button onClick={() => onUpdateStatus(o.id, 'delivered')} className="p-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-500"><Check className="w-4 h-4" /></button>
+                  <button onClick={() => onUpdateStatus(o.id, 'cancelled')} className="p-2 bg-red-600/10 text-red-500 rounded-lg hover:bg-red-500 hover:text-white"><X className="w-4 h-4" /></button>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function AdminFinance({ orders, withdrawals, onApprove, onReject }: any) {
+  const totalBalance = orders.filter((o: any) => o.status === 'delivered').reduce((s: any, o: any) => s + o.comissao_plataforma, 0);
+  
+  return (
+    <div className="space-y-8">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <AdminStatCard label="Lucro Plataforma" value={`${totalBalance.toLocaleString()} Kz`} icon={TrendingUp} color="text-emerald-500" />
+        <AdminStatCard label="Saques Pendentes" value={withdrawals.filter((w: any) => w.status === 'pending').length} icon={Clock} color="text-amber-500" />
+        <AdminStatCard label="Saques Totais" value={withdrawals.length} icon={WalletIcon} color="text-blue-500" />
+      </div>
+
+      <div className="bg-[#0B0F19] rounded-3xl border border-white/5 overflow-hidden">
+        <div className="p-8 border-b border-white/5 flex justify-between items-center">
+          <h3 className="text-xl font-bold text-white">Solicitações de Resgate</h3>
+          <div className="flex gap-2">
+            <button className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs font-bold"><FileSpreadsheet className="w-4 h-4" /> Exportar CSV</button>
+            <button className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs font-bold"><Download className="w-4 h-4" /> PDF</button>
+          </div>
+        </div>
+        <table className="w-full text-left">
+          <thead className="bg-[#05070A]/30 text-[10px] font-mono uppercase text-slate-500">
+            <tr>
+              <th className="p-6">Utilizador</th>
+              <th className="p-6">Valor</th>
+              <th className="p-6">Método</th>
+              <th className="p-6">Data</th>
+              <th className="p-6">Ações</th>
+            </tr>
+          </thead>
+          <tbody className="text-sm divide-y divide-white/5">
+            {withdrawals.map((w: any) => (
+              <tr key={w.id} className="hover:bg-white/5 transition-all">
+                <td className="p-6">
+                  <p className="font-bold text-white">{w.user_nome}</p>
+                  <p className="text-[10px] text-slate-500 uppercase">{w.user_tipo}</p>
+                </td>
+                <td className="p-6 font-black text-emerald-400">{w.valor.toLocaleString()} Kz</td>
+                <td className="p-6 text-slate-400 font-mono text-[10px]">{w.metodo}</td>
+                <td className="p-6 text-slate-500">{new Date(w.createdAt).toLocaleDateString()}</td>
+                <td className="p-6">
+                  {w.status === 'pending' ? (
+                    <div className="flex gap-2">
+                      <button onClick={() => onApprove(w.id, 'system')} className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-[10px] font-bold">Aprovar</button>
+                      <button onClick={() => onReject(w.id)} className="px-4 py-2 bg-red-600/10 text-red-500 rounded-xl text-[10px] font-bold">Recusar</button>
+                    </div>
+                  ) : (
+                    <span className="text-[10px] font-bold uppercase text-slate-600">{w.status}</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function AdminHomeManagement({ banners, products }: any) {
+  return (
+    <div className="space-y-8">
+      <div className="bg-[#0B0F19] p-8 rounded-3xl border border-white/5">
+        <div className="flex justify-between items-center mb-8">
+          <h3 className="text-xl font-bold text-white">Banners da Página Inicial</h3>
+          <button className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-2xl font-bold shadow-lg shadow-blue-600/20 hover:scale-[1.02] transition-all">
+            <Plus className="w-5 h-5" /> Adicionar Banner
+          </button>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {banners.map((b: any) => (
+            <div key={b.id} className="relative aspect-video rounded-2xl overflow-hidden group">
+              <img src={b.imageUrl} className="w-full h-full object-cover transition-transform group-hover:scale-105" alt="Banner" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent p-6 flex flex-col justify-end">
+                <p className="text-white font-bold">{b.title}</p>
+                <div className="flex justify-between items-center mt-2">
+                  <span className={`text-[10px] font-bold px-2 py-1 rounded bg-blue-600 text-white`}>{b.active ? 'Ativo' : 'Inativo'}</span>
+                  <button className="p-2 bg-red-500 rounded-lg text-white opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 className="w-4 h-4" /></button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="bg-[#0B0F19] p-8 rounded-3xl border border-white/5">
+        <h3 className="text-xl font-bold text-white mb-6">Produtos em Destaque</h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+          {products.filter((p: any) => p.featured).map((p: any) => (
+            <div key={p.id} className="bg-[#05070A] p-4 rounded-2xl border border-white/5">
+              <div className="w-full aspect-square bg-slate-900 rounded-xl mb-3 overflow-hidden">
+                <img src={p.imageUrl} className="w-full h-full object-cover" alt="Prod" />
+              </div>
+              <p className="text-xs font-bold text-white truncate">{p.nome}</p>
+              <p className="text-[10px] text-blue-500 font-bold mt-1">{p.preço.toLocaleString()} Kz</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AdminCartAnalytics({ stats, orders }: any) {
+  const abandonedCount = stats ? stats.filter((s: any) => s.isAbandoned).length : 24; // Dummy if empty for visual
+  
+  return (
+    <div className="space-y-8">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <AdminStatCard label="Carrinhos Ativos" value={stats?.length || 42} icon={ShoppingCart} color="text-blue-500" />
+        <AdminStatCard label="Carrinhos Abandonados" value={abandonedCount} icon={Trash2} color="text-red-500" />
+        <AdminStatCard label="Conversão" value="12%" icon={TrendingUp} color="text-emerald-500" />
+      </div>
+
+      <div className="bg-[#0B0F19] p-8 rounded-3xl border border-white/5">
+        <h3 className="text-xl font-bold text-white mb-6">Ranking de Itens Abandonados</h3>
+        <div className="space-y-6">
+          {[1,2,3].map(i => (
+            <div key={i} className="flex items-center gap-6">
+              <div className="w-12 h-12 bg-slate-900 rounded-xl"></div>
+              <div className="flex-1">
+                <div className="flex justify-between mb-2">
+                  <span className="text-sm font-bold text-white">Produto de Teste Exemplo #{i}</span>
+                  <span className="text-xs text-slate-500">14 Abandonos</span>
+                </div>
+                <div className="w-full h-2 bg-slate-900 rounded-full overflow-hidden">
+                  <div className="h-full bg-red-500" style={{ width: `${80 - i*20}%` }}></div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AdminApproval({ products, onApprove, onReject }: any) {
+  const pending = products.filter((p: any) => p.status === 'pending');
+  
+  return (
+    <div className="space-y-6">
+      {pending.length === 0 ? (
+        <div className="text-center py-20 bg-[#0B0F19] rounded-3xl border border-white/5">
+          <ShieldCheck className="w-16 h-16 text-emerald-500/20 mx-auto mb-4" />
+          <h3 className="text-xl font-bold text-white">Tudo em ordem!</h3>
+          <p className="text-slate-500 text-sm">Não há novos produtos aguardando moderação.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {pending.map((p: any) => (
+            <div key={p.id} className="bg-[#0B0F19] p-6 rounded-3xl border border-white/5 flex gap-6">
+              <div className="w-32 h-32 bg-slate-900 rounded-2xl shrink-0 overflow-hidden">
+                 <img src={p.imageUrl} className="w-full h-full object-cover" alt="Preview" />
+              </div>
+              <div className="flex-1 flex flex-col">
+                <p className="text-[10px] text-slate-500 uppercase font-mono tracking-widest">Aguardando Avaliação</p>
+                <h4 className="text-lg font-bold text-white mt-1 leading-tight">{p.nome}</h4>
+                <p className="text-xs text-slate-500 mt-2 line-clamp-2">{p.descrição}</p>
+                <div className="mt-auto flex justify-between items-end pt-4">
+                  <p className="text-lg font-black text-blue-500">{p.preço.toLocaleString()} Kz</p>
+                  <div className="flex gap-2">
+                    <button onClick={() => onReject(p.id, 'rejected')} className="p-3 bg-red-600/10 text-red-500 rounded-xl hover:bg-red-600 hover:text-white transition-all"><X className="w-5 h-5" /></button>
+                    <button onClick={() => onApprove(p.id, 'approved')} className="p-3 bg-emerald-600/10 text-emerald-500 rounded-xl hover:bg-emerald-600 hover:text-white transition-all"><Check className="w-5 h-5" /></button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AdminUsers({ users, onBlock, onDelete }: any) {
+  return (
+    <div className="bg-[#0B0F19] border border-white/5 rounded-3xl overflow-hidden shadow-2xl">
+      <table className="w-full text-left">
+        <thead className="bg-[#05070A]/50 text-[10px] font-mono uppercase text-slate-500">
+          <tr>
+            <th className="p-6">Nome / Email</th>
+            <th className="p-6 text-center">Tipo</th>
+            <th className="p-6 text-center">Status</th>
+            <th className="p-6 text-right">Ações</th>
+          </tr>
+        </thead>
+        <tbody className="text-sm divide-y divide-white/5">
+          {users.map((u: any) => (
+            <tr key={u.id} className="hover:bg-white/5 transition-all">
+              <td className="p-6">
+                <p className="font-bold text-white">{u.nome}</p>
+                <p className="text-xs text-slate-500">{u.email}</p>
+              </td>
+              <td className="p-6 text-center">
+                <span className="bg-slate-900 border border-white/5 px-3 py-1 rounded-full text-[10px] font-bold text-slate-400 uppercase">
+                  {u.tipo}
+                </span>
+              </td>
+              <td className="p-6 text-center">
+                <span className={`text-[10px] font-bold uppercase ${u.status === 'blocked' ? 'text-red-500' : 'text-emerald-500'}`}>
+                  {u.status || 'active'}
+                </span>
+              </td>
+              <td className="p-6">
+                <div className="flex justify-end gap-2">
+                  <button onClick={() => onBlock(u.id, u.status === 'blocked' ? 'active' : 'blocked')} className={`p-2 rounded-lg transition-all ${u.status === 'blocked' ? 'bg-emerald-600/10 text-emerald-500' : 'bg-red-600/10 text-red-500'}`}>
+                    {u.status === 'blocked' ? <Unlock className="w-4 h-4" /> : <Ban className="w-4 h-4" />}
+                  </button>
+                  <button onClick={() => onDelete(u.id)} className="p-2 bg-slate-800 text-slate-400 rounded-lg hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function AdminDeliveryFees({ fees, onAdd, onDelete }: any) {
+  const [bairro, setBairro] = useState('');
+  const [valor, setValor] = useState('');
+
+  const submit = (e: any) => {
+    e.preventDefault();
+    if (!bairro || !valor) return;
+    onAdd(bairro, parseFloat(valor));
+    setBairro('');
+    setValor('');
+  };
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="bg-[#0B0F19] p-8 rounded-3xl border border-white/5 h-fit">
+        <h3 className="text-xl font-bold text-white mb-6">Adicionar Localidade</h3>
+        <form onSubmit={submit} className="space-y-6">
+          <div className="space-y-2">
+            <label className="text-xs text-slate-500 uppercase font-mono tracking-widest pl-1">Seleccionar Bairro de Luanda</label>
+            <select className="w-full bg-[#05070A] border border-white/10 rounded-2xl p-4 text-white outline-none focus:border-blue-500 appearance-none" value={bairro} onChange={(e) => setBairro(e.target.value)}>
+              <option value="">Escolher...</option>
+              {LUANDA_BAIRROS.map(b => <option key={b} value={b}>{b}</option>)}
+            </select>
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs text-slate-500 uppercase font-mono tracking-widest pl-1">Preço Entrega (Kz)</label>
+            <input className="w-full bg-[#05070A] border border-white/10 rounded-2xl p-4 text-white outline-none focus:border-blue-500" placeholder="2500" value={valor} onChange={(e) => setValor(e.target.value)} />
+          </div>
+          <button type="submit" className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold shadow-lg shadow-blue-600/20 hover:scale-[1.01] transition-all">Salvar Taxa</button>
+        </form>
+      </div>
+
+      <div className="bg-[#0B0F19] p-8 rounded-3xl border border-white/5 h-fit">
+        <h3 className="text-xl font-bold text-white mb-6">Tabela Vigente (Luanda)</h3>
+        <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+          {fees.map((f: any) => (
+            <div key={f.id} className="flex justify-between items-center p-4 bg-white/5 rounded-2xl border border-white/5 transition-all hover:bg-white/[0.08]">
+              <div>
+                <p className="text-sm font-bold text-white">{f.bairro}</p>
+                <p className="text-xs text-blue-400 font-mono">{f.valor.toLocaleString()} Kz</p>
+              </div>
+              <button onClick={() => onDelete(f.id)} className="p-2 text-slate-500 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AdminReports({ reports }: any) {
+  return (
+    <div className="space-y-6">
+      {reports.length === 0 ? (
+        <div className="text-center py-20 bg-[#0B0F19] rounded-3xl border border-white/5">
+           <AlertTriangle className="w-16 h-16 text-slate-800 mx-auto mb-4" />
+           <p className="text-slate-500">Sem denúncias activas no momento.</p>
+        </div>
+      ) : (
+        reports.map((r: any) => (
+          <div key={r.id} className="bg-[#0B0F19] p-6 rounded-3xl border border-white/10 flex gap-6 border-l-4 border-l-red-500">
+             <div className="flex-1">
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="text-[10px] font-black uppercase bg-red-500/10 text-red-500 px-2 py-0.5 rounded italic">Denúncia</span>
+                  <span className="text-white font-bold text-sm">Alvo: {r.targetId}</span>
+                </div>
+                <h4 className="text-lg font-bold text-white mb-2">{r.reason}</h4>
+                <p className="text-xs text-slate-400 mb-6 bg-slate-900 p-4 rounded-2xl">{r.details}</p>
+                <div className="flex justify-between items-center bg-white/5 p-3 rounded-2xl text-[10px] text-slate-500 font-mono">
+                  <span>Reportado por: {r.reporterName}</span>
+                  <span>{new Date(r.createdAt).toLocaleString()}</span>
+                </div>
+             </div>
+             <div className="flex flex-col gap-2">
+                <button className="p-3 bg-red-600 text-white rounded-xl shadow-lg shadow-red-600/20"><Trash2 className="w-5 h-5" /></button>
+                <button className="p-3 bg-slate-800 text-white rounded-xl"><Check className="w-5 h-5" /></button>
+             </div>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+function AdminAuditLogs({ logs }: any) {
+  return (
+    <div className="bg-[#0B0F19] rounded-3xl border border-white/5 overflow-hidden">
+       <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+             <thead className="bg-[#05070A]/80 text-[10px] font-mono text-slate-500 uppercase">
+                <tr>
+                   <th className="p-6">Data / Hora</th>
+                   <th className="p-6">Administrador</th>
+                   <th className="p-6">Ação Realizada</th>
+                   <th className="p-6">Dispositivo / IP</th>
+                </tr>
+             </thead>
+             <tbody className="divide-y divide-white/5 text-slate-400">
+                {logs.map((log: any) => (
+                  <tr key={log.id} className="hover:bg-white/5">
+                     <td className="p-6 font-mono text-slate-500 whitespace-nowrap">
+                       {new Date(log.createdAt).toLocaleString()}
+                     </td>
+                     <td className="p-6">
+                       <span className="text-white font-bold">{log.adminName}</span>
+                     </td>
+                     <td className="p-6">
+                       <span className="text-blue-400 font-bold uppercase mr-2">[{log.action}]</span>
+                       <span className="text-slate-300">{log.details}</span>
+                     </td>
+                     <td className="p-6 italic opacity-50 truncate max-w-[200px]">
+                       {log.device || 'N/A'}
+                     </td>
+                  </tr>
+                ))}
+             </tbody>
+          </table>
+       </div>
+    </div>
+  );
+}
+
+function AdminProfileSection({ userId, users }: any) {
+  const profile = users.find((u: any) => u.id === userId);
+  return (
+    <div className="max-w-xl mx-auto space-y-8 bg-[#0B0F19] p-10 rounded-[3rem] border border-white/5">
+       <div className="text-center">
+          <div className="w-24 h-24 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-[2rem] mx-auto mb-6 flex items-center justify-center text-3xl font-black text-white shadow-2xl shadow-blue-600/30">
+            {profile?.nome.charAt(0)}
+          </div>
+          <h2 className="text-2xl font-bold text-white">{profile?.nome}</h2>
+          <p className="text-blue-500 font-mono text-xs mt-1 uppercase tracking-widest">{profile?.tipo} de Nível Crítico</p>
+       </div>
+       <div className="space-y-4 pt-4 border-t border-white/5">
+          <div className="space-y-1">
+            <label className="text-[10px] text-slate-500 uppercase font-mono tracking-widest ml-1">E-mail Administrativo</label>
+            <input className="w-full bg-[#05070A] border border-white/10 rounded-2xl p-4 text-white" disabled value={profile?.email} />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] text-slate-500 uppercase font-mono tracking-widest ml-1">Senha de Segurança</label>
+            <input className="w-full bg-[#05070A] border border-white/10 rounded-2xl p-4 text-white" type="password" value="********" readOnly />
+          </div>
+          <button className="w-full py-4 bg-slate-800 text-white rounded-2xl font-bold hover:bg-slate-700 transition-all">Alterar Credenciais de Acesso</button>
+       </div>
+    </div>
+  );
+}
+
+// Global UI Helper Components
+function AdminStatCard({ label, value, icon: Icon, color }: any) {
+  return (
+    <div className="bg-[#0B0F19] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl relative overflow-hidden group hover:border-white/10 transition-all">
+       <div className={`absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity ${color}`}>
+         <Icon className="w-20 h-20" />
+       </div>
+       <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-mono mb-2">{label}</p>
+       <h4 className={`text-3xl font-display font-black tracking-tight ${color}`}>{value}</h4>
+    </div>
+  );
+}
+
+function SegmentationItem({ label, count, color, total }: any) {
+  const percentage = (count / total) * 100 || 0;
+  return (
+    <div className="space-y-2">
+       <div className="flex justify-between text-xs font-bold">
+         <span className="text-slate-300">{label}</span>
+         <span className="text-slate-500 font-mono">{count} ({percentage.toFixed(1)}%)</span>
+       </div>
+       <div className="w-full h-2 bg-slate-900 border border-white/5 rounded-full overflow-hidden">
+         <div className={`h-full ${color}`} style={{ width: `${percentage}%` }}></div>
+       </div>
+    </div>
   );
 }

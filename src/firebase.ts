@@ -83,7 +83,11 @@ import {
   OrderStatus,
   ProductStatus,
   UserRole,
-  WithdrawalMethod
+  WithdrawalMethod,
+  HomeBanner,
+  Report,
+  AuditLog,
+  CartStats
 } from './types';
 
 // Initialize Firebase only if valid
@@ -195,6 +199,32 @@ export async function getUserProfile(userId: string): Promise<UserProfile | null
   }
 }
 
+// Audit logging helper
+export async function createAuditLog(action: string, details: string): Promise<void> {
+  const user = auth.currentUser;
+  if (!user) return;
+  
+  try {
+    const profile = await getUserProfile(user.uid);
+    if (!profile || profile.tipo !== 'ADM') return;
+
+    const logId = `log_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    const log: AuditLog = {
+      id: logId,
+      adminId: user.uid,
+      adminName: profile.nome,
+      action,
+      details,
+      device: navigator.userAgent,
+      createdAt: new Date().toISOString()
+    };
+    
+    await setDoc(doc(db, 'audit_logs', logId), log);
+  } catch (e) {
+    console.error("Audit log error:", e);
+  }
+}
+
 // Create profile and initialize wallet
 export async function createUserProfile(userId: string, nome: string, email: string, tipo: UserRole): Promise<UserProfile> {
   const userPath = `users/${userId}`;
@@ -202,11 +232,20 @@ export async function createUserProfile(userId: string, nome: string, email: str
   try {
     const batch = writeBatch(db);
     
+    // Safety check: Prevent manual creation of another ADM if one exists
+    if (tipo === 'ADM') {
+      const exists = await checkIfAdminExists();
+      if (exists) {
+        throw new Error("Já existe uma conta administrativa. Apenas uma é permitida por motivos de segurança.");
+      }
+    }
+
     const profile: UserProfile = {
       id: userId,
       nome,
       email,
       tipo,
+      status: 'active',
       createdAt: new Date().toISOString()
     };
     
@@ -260,9 +299,98 @@ export async function checkIfAdminExists(): Promise<boolean> {
   }
 }
 
+export async function updateUserProfile(userId: string, data: Partial<UserProfile>): Promise<void> {
+  const path = `users/${userId}`;
+  try {
+    await updateDoc(doc(db, 'users', userId), data);
+    
+    // Log if it was an admin action on another user
+    if (auth.currentUser?.uid !== userId) {
+      await createAuditLog('user_management', `Atualizou perfil de ${userId}: ${JSON.stringify(data)}`);
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+}
+
+export async function deleteUser(userId: string): Promise<void> {
+  const path = `users/${userId}`;
+  try {
+    const profile = await getUserProfile(userId);
+    if (profile?.tipo === 'ADM') throw new Error("A conta de Administrador não pode ser eliminada.");
+
+    const batch = writeBatch(db);
+    batch.delete(doc(db, 'users', userId));
+    batch.delete(doc(db, 'wallets', userId));
+    
+    await createAuditLog('user_management', `Eliminou utilizador ${userId} (${profile?.nome})`);
+    await batch.commit();
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
 // -------------------------------------------------------------
-// WALLET & WITHDRAWALS
+// HOME BANNERS SERVICES
 // -------------------------------------------------------------
+export async function getBanners(): Promise<HomeBanner[]> {
+  const path = 'banners';
+  try {
+    const q = query(collection(db, 'banners'), orderBy('order', 'asc'));
+    const snap = await getDocs(q);
+    return snap.docs.map(doc => doc.data() as HomeBanner);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+  }
+}
+
+export async function saveBanner(banner: Omit<HomeBanner, 'id'>, id?: string): Promise<void> {
+  const bannerId = id || `banner_${Date.now()}`;
+  const path = `banners/${bannerId}`;
+  try {
+    await setDoc(doc(db, 'banners', bannerId), { ...banner, id: bannerId });
+    await createAuditLog('home_management', `Banner ${banner.title} guardado/atualizado.`);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function deleteBanner(id: string): Promise<void> {
+  const path = `banners/${id}`;
+  try {
+    await deleteDoc(doc(db, 'banners', id));
+    await createAuditLog('home_management', `Banner ${id} eliminado.`);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
+// -------------------------------------------------------------
+// REPORTS SERVICES
+// -------------------------------------------------------------
+export async function reportIssue(targetId: string, targetType: 'product' | 'user', reason: string, details: string): Promise<void> {
+  const user = auth.currentUser;
+  if (!user) return;
+  
+  const reportId = `report_${Date.now()}`;
+  try {
+    const report: Report = {
+      id: reportId,
+      reporterId: user.uid,
+      reporterName: user.displayName || 'Utilizador',
+      targetId,
+      targetType,
+      reason,
+      details,
+      status: 'pending',
+      priority: 'medium',
+      createdAt: new Date().toISOString()
+    };
+    await setDoc(doc(db, 'reports', reportId), report);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, 'reports');
+  }
+}
 export async function getWallet(userId: string): Promise<Wallet | null> {
   const path = `wallets/${userId}`;
   try {
@@ -350,6 +478,7 @@ export async function approveWithdrawal(withdrawalId: string, admId: string): Pr
 
     const batch = writeBatch(db);
     batch.update(withdrawalRef, { status: 'approved' });
+    await createAuditLog('withdrawal_management', `Aprovou saque ${withdrawalId} de ${withdrawal.valor} Kz`);
 
     // Handle Fee for Affiliates (200 Kz fee as requested)
     if (withdrawal.user_tipo === 'Afiliado') {
@@ -399,6 +528,7 @@ export async function rejectWithdrawal(withdrawalId: string, motivo: string): Pr
 
     const batch = writeBatch(db);
     batch.update(withdrawalRef, { status: 'rejected' });
+    await createAuditLog('withdrawal_management', `Rejeitou saque ${withdrawalId}. Motivo: ${motivo}`);
 
     // Refund wallet
     const walletRef = doc(db, 'wallets', withdrawal.user_id);
@@ -483,6 +613,7 @@ export async function updateProductStatus(productId: string, status: ProductStat
     const product = productSnap.data() as Product;
     
     await updateDoc(productRef, { status });
+    await createAuditLog('product_moderation', `${status === 'approved' ? 'Aprovou' : 'Rejeitou'} produto ${productId} (${product.nome})`);
 
     // Notify Producer
     const notiId = `noti_prod_status_${productId}_${status}`;
@@ -558,10 +689,24 @@ export async function getDeliveryFees(): Promise<DeliveryFee[]> {
     return snap.docs.map(doc => doc.data() as DeliveryFee);
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, path);
+    return [];
   }
 }
 
+// Luanda Bairros definition
+export const LUANDA_BAIRROS = [
+  "Talatona", "Kilamba", "Benfica", "Viana", "Maianga", "Camama", 
+  "Samba", "Cacuaco", "Morro Bento", "Rocha Pinto", "Golf", "Zango", 
+  "Cassenda", "Maculusso", "Patriota", "Rangel", "Ingombota", "Kikolo", 
+  "Hoji-Ya-Henda", "Prenda", "Futungo", "Vila Alice", "Alvalade"
+];
+
 export async function setDeliveryFee(bairro: string, valor: number): Promise<void> {
+  // Validate that it's a Luanda bairro
+  if (!LUANDA_BAIRROS.includes(bairro)) {
+    throw new Error("Localidade inválida. Entregas disponíveis apenas para Luanda.");
+  }
+
   const id = `fee_${bairro.toLowerCase().replace(/\s+/g, '_')}`;
   const path = `deliveryFees/${id}`;
   try {
