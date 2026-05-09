@@ -13,7 +13,9 @@ import {
   getUserProfile,
   updateUserProfile,
   deleteUser,
-  LUANDA_BAIRROS
+  LUANDA_BAIRROS,
+  handleFirestoreError,
+  OperationType
 } from '../firebase';
 import { 
   collection, 
@@ -67,7 +69,9 @@ import {
   FileSpreadsheet,
   Ban,
   Unlock,
-  Package
+  Package,
+  PlayCircle,
+  Link as LinkIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
@@ -98,13 +102,47 @@ export function DashboardAdmin({ userId }: DashboardAdminProps) {
 
   useEffect(() => {
     // Basic metrics listeners
-    const unsubUsers = onSnapshot(collection(db, 'users'), (snap) => setUsers(snap.docs.map(d => d.data() as UserProfile)));
-    const unsubProducts = onSnapshot(collection(db, 'products'), (snap) => setProducts(snap.docs.map(d => d.data() as Product)));
-    const unsubOrders = onSnapshot(collection(db, 'orders'), (snap) => setOrders(snap.docs.map(d => d.data() as Order)));
-    const unsubWithdrawals = onSnapshot(collection(db, 'withdrawals'), (snap) => setWithdrawals(snap.docs.map(d => d.data() as Withdrawal)));
-    const unsubFees = onSnapshot(collection(db, 'deliveryFees'), (snap) => setDeliveryFees(snap.docs.map(d => d.data() as DeliveryFee)));
-    const unsubCoupons = onSnapshot(collection(db, 'coupons'), (snap) => setCoupons(snap.docs.map(d => d.data() as Coupon)));
-    const unsubPlatWallet = onSnapshot(doc(db, 'wallets', 'PLATAFORMA'), (snap) => { if (snap.exists()) setPlatformWallet(snap.data() as Wallet); });
+    const unsubUsers = onSnapshot(collection(db, 'users'), (snap) => {
+      setUsers(snap.docs.map(d => d.data() as UserProfile));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'users');
+    });
+
+    const unsubProducts = onSnapshot(collection(db, 'products'), (snap) => {
+      setProducts(snap.docs.map(d => d.data() as Product));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'products');
+    });
+
+    const unsubOrders = onSnapshot(collection(db, 'orders'), (snap) => {
+      setOrders(snap.docs.map(d => d.data() as Order));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'orders');
+    });
+
+    const unsubWithdrawals = onSnapshot(collection(db, 'withdrawals'), (snap) => {
+      setWithdrawals(snap.docs.map(d => d.data() as Withdrawal));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'withdrawals');
+    });
+
+    const unsubFees = onSnapshot(collection(db, 'deliveryFees'), (snap) => {
+      setDeliveryFees(snap.docs.map(d => d.data() as DeliveryFee));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'deliveryFees');
+    });
+
+    const unsubCoupons = onSnapshot(collection(db, 'coupons'), (snap) => {
+      setCoupons(snap.docs.map(d => d.data() as Coupon));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'coupons');
+    });
+
+    const unsubPlatWallet = onSnapshot(doc(db, 'wallets', 'PLATAFORMA'), (snap) => {
+      if (snap.exists()) setPlatformWallet(snap.data() as Wallet);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'wallets/PLATAFORMA');
+    });
 
     return () => {
       unsubUsers(); unsubProducts(); unsubOrders(); unsubWithdrawals(); 
@@ -237,6 +275,8 @@ function AdminDashboard({ users, products, orders }: any) {
     compradores: users.filter((u: any) => u.tipo === 'Cliente').length,
     produtosPendentes: products.filter((p: any) => p.status === 'pending').length,
     produtosAprovados: products.filter((p: any) => p.status === 'approved').length,
+    vendasDigitais: orders.filter((o: any) => o.status === 'delivered' && o.digital_access_granted).length,
+    vendasFisicas: orders.filter((o: any) => o.status === 'delivered' && !o.digital_access_granted).length,
   };
 
   const chartData = [
@@ -248,9 +288,9 @@ function AdminDashboard({ users, products, orders }: any) {
     <div className="space-y-8">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <AdminStatCard label="Total Faturado" value={`${totals.faturado.toLocaleString()} Kz`} icon={DollarSign} color="text-emerald-500" />
-        <AdminStatCard label="Total Vendas" value={totals.vendasCount} icon={ShoppingBag} color="text-blue-500" />
-        <AdminStatCard label="Produtos Pendentes" value={totals.produtosPendentes} icon={ShieldCheck} color="text-amber-500" />
-        <AdminStatCard label="Usuários Ativos" value={totals.usuarios} icon={Users} color="text-purple-500" />
+        <AdminStatCard label="Vendas Digitais" value={totals.vendasDigitais} icon={PlayCircle} color="text-purple-500" />
+        <AdminStatCard label="Vendas Físicas" value={totals.vendasFisicas} icon={Package} color="text-blue-500" />
+        <AdminStatCard label="Aprovação Queue" value={totals.produtosPendentes} icon={ShieldCheck} color="text-amber-500" />
       </div>
 
       <div className="bg-[#0B0F19] p-8 rounded-3xl border border-white/5 min-h-[400px]">
@@ -543,6 +583,15 @@ function AdminCoupons({ coupons, onSave, onDelete }: any) {
 
 function AdminApproval({ products, onApprove, onReject }: any) {
   const pending = products.filter((p: any) => p.status === 'pending');
+  const [rejectId, setRejectId] = useState<string | null>(null);
+  const [reason, setReason] = useState('');
+
+  const handleReject = async () => {
+    if (!rejectId || !reason.trim()) return;
+    await onReject(rejectId, 'rejected', reason);
+    setRejectId(null);
+    setReason('');
+  };
   
   return (
     <div className="space-y-6">
@@ -553,21 +602,45 @@ function AdminApproval({ products, onApprove, onReject }: any) {
           <p className="text-slate-500 text-sm">Não há novos produtos aguardando moderação.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {pending.map((p: any) => (
-            <div key={p.id} className="bg-[#0B0F19] p-6 rounded-3xl border border-white/5 flex gap-6">
-              <div className="w-32 h-32 bg-slate-900 rounded-2xl shrink-0 overflow-hidden">
+            <div key={p.id} className="bg-[#0B0F19] p-6 rounded-3xl border border-white/5 flex flex-col md:flex-row gap-6 relative overflow-hidden group">
+              {p.tipo === 'DIGITAL' && (
+                <div className="absolute top-0 right-0 p-2 bg-purple-500/10 border-b border-l border-purple-500/20 rounded-bl-xl text-[8px] font-black text-purple-400 uppercase tracking-widest">
+                  Infoproduto
+                </div>
+              )}
+              
+              <div className="w-full md:w-32 h-32 bg-slate-900 rounded-2xl shrink-0 overflow-hidden border border-white/5">
                  <img src={p.imageUrl} className="w-full h-full object-cover" alt="Preview" />
               </div>
               <div className="flex-1 flex flex-col">
-                <p className="text-[10px] text-slate-500 uppercase font-mono tracking-widest">Aguardando Avaliação</p>
-                <h4 className="text-lg font-bold text-white mt-1 leading-tight">{p.nome}</h4>
-                <p className="text-xs text-slate-500 mt-2 line-clamp-2">{p.descrição}</p>
-                <div className="mt-auto flex justify-between items-end pt-4">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p className="text-[10px] text-slate-500 uppercase font-mono tracking-widest">{p.categoria || 'Geral'}</p>
+                    <h4 className="text-lg font-bold text-white mt-1 leading-tight">{p.nome}</h4>
+                  </div>
                   <p className="text-lg font-black text-blue-500">{p.preço.toLocaleString()} Kz</p>
+                </div>
+                
+                <p className="text-xs text-slate-500 mt-2 line-clamp-2 italic">"{p.descrição}"</p>
+
+                {p.tipo === 'DIGITAL' && (
+                  <div className="mt-4 p-3 bg-slate-950/50 rounded-xl border border-white/5 space-y-2">
+                    <p className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter">Conteúdo Digital para Verificação:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {p.videoUrl && <span className="text-[10px] bg-red-500/10 text-red-500 px-2 py-0.5 rounded leading-none flex items-center gap-1"><PlayCircle className="w-3 h-3" /> Vídeo</span>}
+                      {p.fileUrl && <span className="text-[10px] bg-blue-500/10 text-blue-500 px-2 py-0.5 rounded leading-none flex items-center gap-1"><Download className="w-3 h-3" /> Arquivo</span>}
+                      {p.externalLink && <span className="text-[10px] bg-emerald-500/10 text-emerald-500 px-2 py-0.5 rounded leading-none flex items-center gap-1"><LinkIcon className="w-3 h-3" /> Link</span>}
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-auto flex justify-between items-center pt-4">
+                  <div className="text-[10px] text-slate-600">Produtor: {p.produtor_id.substring(0, 8)}</div>
                   <div className="flex gap-2">
-                    <button onClick={() => onReject(p.id, 'rejected')} className="p-3 bg-red-600/10 text-red-500 rounded-xl hover:bg-red-600 hover:text-white transition-all"><X className="w-5 h-5" /></button>
-                    <button onClick={() => onApprove(p.id, 'approved')} className="p-3 bg-emerald-600/10 text-emerald-500 rounded-xl hover:bg-emerald-600 hover:text-white transition-all"><Check className="w-5 h-5" /></button>
+                    <button onClick={() => setRejectId(p.id)} className="p-2.5 bg-red-600/10 text-red-500 rounded-xl hover:bg-red-600 hover:text-white transition-all shadow-lg hover:shadow-red-600/20"><X className="w-5 h-5" /></button>
+                    <button onClick={() => onApprove(p.id, 'approved')} className="p-2.5 bg-emerald-600 font-bold text-white rounded-xl shadow-lg shadow-emerald-600/20 hover:scale-105 active:scale-95 transition-all"><Check className="w-5 h-5" /></button>
                   </div>
                 </div>
               </div>
@@ -575,6 +648,30 @@ function AdminApproval({ products, onApprove, onReject }: any) {
           ))}
         </div>
       )}
+
+      {/* REJECTION SUB-MODAL */}
+      <AnimatePresence>
+        {rejectId && (
+          <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[210] flex items-center justify-center p-6">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-[#0B0F19] p-8 rounded-3xl max-w-md w-full border border-white/10">
+              <h3 className="text-xl font-bold text-white mb-4 italic">Motivo da Rejeição do Produto</h3>
+              <p className="text-xs text-slate-400 mb-4 font-mono font-bold leading-relaxed">
+                Informe ao produtor por que seu produto não atende aos requisitos do Mercado AO (imagem ruim, conteúdo digital quebrado, preço irreal etc.)
+              </p>
+              <textarea 
+                className="w-full bg-[#05070A] border border-white/10 rounded-2xl p-4 text-white mb-6 h-32 focus:border-red-500 outline-none text-sm leading-relaxed"
+                placeholder="Ex: Link do vídeo não funciona..."
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+              />
+              <div className="flex gap-4">
+                <button onClick={() => setRejectId(null)} className="flex-1 py-3 bg-slate-800 text-white rounded-xl font-bold text-xs uppercase">Fechar</button>
+                <button onClick={handleReject} disabled={!reason.trim()} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold disabled:opacity-40 text-xs uppercase">Rejeitar</button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -3,7 +3,11 @@ import {
   db, 
   createOrder, 
   submitReview, 
-  useUserReferral 
+  useUserReferral,
+  handleFirestoreError,
+  OperationType,
+  getUserDigitalAccess,
+  updateDigitalProgress
 } from '../firebase';
 import { 
   collection, 
@@ -11,7 +15,7 @@ import {
   where, 
   onSnapshot 
 } from 'firebase/firestore';
-import { Product, Coupon, DeliveryFee, Order } from '../types';
+import { Product, Coupon, DeliveryFee, Order, UserDigitalAccess } from '../types';
 import { 
   ShoppingBag, 
   MapPin, 
@@ -29,7 +33,16 @@ import {
   ChevronRight,
   Sparkles,
   Flame,
-  Truck
+  Truck,
+  Download,
+  PlayCircle,
+  FileText,
+  Link as LinkIcon,
+  Globe,
+  CreditCard,
+  Building,
+  Smartphone,
+  SmartphoneIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -37,6 +50,10 @@ interface MarketplaceClientProps {
   userId: string;
   onOpenChat: (orderId: string) => void;
 }
+
+const LUANDA_BAIRROS = [
+  "Maianga", "Talatona", "Viana", "Benfica", "Kilamba", "Cazenga", "Rangel", "Samba", "Sambizanga"
+];
 
 export function MarketplaceClient({ userId, onOpenChat }: MarketplaceClientProps) {
   // DB feeds
@@ -47,7 +64,12 @@ export function MarketplaceClient({ userId, onOpenChat }: MarketplaceClientProps
 
   // Search/Filters states
   const [searchWord, setSearchWord] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState<'all' | 'featured'>('all');
+  const [categoryFilter, setCategoryFilter] = useState<'all' | 'featured' | 'FISICO' | 'DIGITAL'>('all');
+  const [activeTab, setActiveTab] = useState<'marketplace' | 'my_digital'>('marketplace');
+
+  // Digital Access state
+  const [digitalAccessList, setDigitalAccessList] = useState<UserDigitalAccess[]>([]);
+  const [selectedAccess, setSelectedAccess] = useState<UserDigitalAccess | null>(null);
 
   // Checkout states
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -56,6 +78,8 @@ export function MarketplaceClient({ userId, onOpenChat }: MarketplaceClientProps
   const [deliveryFeeValue, setDeliveryFeeValue] = useState<number>(0);
   const [moreAddress, setMoreAddress] = useState('');
   const [clientPhone, setClientPhone] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<'COD' | 'ONLINE'>('COD');
+  const [onlineChannel, setOnlineChannel] = useState<'Transferência' | 'Unitel Money' | 'MCX Express' | 'Referência'>('Transferência');
   const [userCouponInput, setUserCouponInput] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
   const [couponFeedback, setCouponFeedback] = useState<{ status: 'success' | 'error'; text: string } | null>(null);
@@ -78,22 +102,37 @@ export function MarketplaceClient({ userId, onOpenChat }: MarketplaceClientProps
     const qProds = query(collection(db, 'products'), where('status', '==', 'approved'));
     const unsubProds = onSnapshot(qProds, (snap) => {
       setProducts(snap.docs.map(d => d.data() as Product));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'products');
     });
 
     // 2. Fetch coupons
     const unsubCoupons = onSnapshot(collection(db, 'coupons'), (snap) => {
       setCoupons(snap.docs.map(d => d.data() as Coupon));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'coupons');
     });
 
     // 3. Fetch delivery mapping
     const unsubFees = onSnapshot(collection(db, 'deliveryFees'), (snap) => {
       setDeliveryFees(snap.docs.map(d => d.data() as DeliveryFee));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'deliveryFees');
     });
 
     // 4. Fetch orders made by this client
     const qOrders = query(collection(db, 'orders'), where('cliente_id', '==', userId));
     const unsubOrders = onSnapshot(qOrders, (snap) => {
       setActiveOrders(snap.docs.map(d => d.data() as Order));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'orders');
+    });
+
+    // 5. Fetch digital access
+    const unsubAccess = onSnapshot(query(collection(db, 'digital_access'), where('user_id', '==', userId)), (snap) => {
+      setDigitalAccessList(snap.docs.map(d => d.data() as UserDigitalAccess));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'digital_access');
     });
 
     return () => {
@@ -101,6 +140,7 @@ export function MarketplaceClient({ userId, onOpenChat }: MarketplaceClientProps
       unsubCoupons();
       unsubFees();
       unsubOrders();
+      unsubAccess();
     };
   }, [userId]);
 
@@ -132,12 +172,21 @@ export function MarketplaceClient({ userId, onOpenChat }: MarketplaceClientProps
     }
   };
 
-  // Submit order CoD
+  // Submit order
   const handlePlaceOrderSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedProduct || !bairroSelection || !clientPhone.trim() || !moreAddress.trim()) {
-      alert("Por favor preencha todos os dados de entrega em Luanda!");
-      return;
+    if (!selectedProduct) return;
+
+    if (selectedProduct.tipo === 'FISICO') {
+      if (!bairroSelection || !clientPhone.trim() || !moreAddress.trim()) {
+        alert("Por favor preencha todos os dados de entrega em Luanda!");
+        return;
+      }
+    } else {
+      if (!clientPhone.trim()) {
+        alert("Por favor preencha o seu telemóvel!");
+        return;
+      }
     }
 
     setOrderProcessing(true);
@@ -150,11 +199,13 @@ export function MarketplaceClient({ userId, onOpenChat }: MarketplaceClientProps
         userId,
         selectedProduct,
         clientPhone,
-        bairroSelection,
-        moreAddress,
+        selectedProduct.tipo === 'FISICO' ? bairroSelection : "",
+        selectedProduct.tipo === 'FISICO' ? moreAddress : "",
         discountPercentage,
-        deliveryFeeValue,
-        detectedReferralUserId || undefined
+        selectedProduct.tipo === 'FISICO' ? deliveryFeeValue : 0,
+        detectedReferralUserId || undefined,
+        selectedProduct.tipo === 'DIGITAL' ? 'ONLINE' : 'COD',
+        selectedProduct.tipo === 'DIGITAL' ? onlineChannel : undefined
       );
 
       setOrderSuccessRef(orderId);
@@ -198,7 +249,34 @@ export function MarketplaceClient({ userId, onOpenChat }: MarketplaceClientProps
   return (
     <div className="space-y-10" id="marketplace_client">
       
-      {/* REFERRAL LINK ALREADY LOADED DETECTOR NOTICE */}
+      {/* NAVIGATION TABS */}
+      <div className="flex gap-4 border-b border-white/5 pb-1">
+        <button
+          onClick={() => setActiveTab('marketplace')}
+          className={`flex items-center gap-2 px-4 py-2 font-display text-sm font-bold transition-all ${
+            activeTab === 'marketplace' ? 'text-blue-500 border-b-2 border-blue-500' : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          <ShoppingBag className="w-4 h-4" />
+          Marketplace
+        </button>
+        <button
+          onClick={() => setActiveTab('my_digital')}
+          className={`flex items-center gap-2 px-4 py-2 font-display text-sm font-bold transition-all ${
+            activeTab === 'my_digital' ? 'text-blue-500 border-b-2 border-blue-500' : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          <PlayCircle className="w-4 h-4" />
+          Meus Infoprodutos
+          {digitalAccessList.length > 0 && (
+            <span className="bg-blue-500 text-white text-[10px] px-1.5 rounded-full">{digitalAccessList.length}</span>
+          )}
+        </button>
+      </div>
+
+      {activeTab === 'marketplace' ? (
+        <>
+          {/* REFERRAL LINK ALREADY LOADED DETECTOR NOTICE */}
       {detectedReferralUserId && (
         <div className="bg-gradient-to-r from-purple-500/20 to-blue-500/10 p-3 rounded-xl border border-purple-500/20 text-xs text-purple-400 font-mono text-center flex items-center justify-center gap-2 select-none animate-pulse">
           <Sparkles className="w-4 h-4 text-purple-400" />
@@ -227,14 +305,30 @@ export function MarketplaceClient({ userId, onOpenChat }: MarketplaceClientProps
 
       {/* FILTER PANEL AND SEARCH */}
       <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4">
-        <div className="flex items-center gap-2 border-b border-white/5 pb-1 flex-1">
+        <div className="flex items-center gap-2 border-b border-white/5 pb-1 flex-1 overflow-x-auto whitespace-nowrap scrollbar-hide">
           <button
             onClick={() => setCategoryFilter('all')}
             className={`px-4 py-2 font-display text-sm font-semibold transition-all ${
               categoryFilter === 'all' ? 'text-white border-b-2 border-[#2563EB]' : 'text-slate-400 hover:text-white'
             }`}
           >
-            Todos os Bens
+            Todos
+          </button>
+          <button
+            onClick={() => setCategoryFilter('FISICO')}
+            className={`px-4 py-2 font-display text-sm font-semibold transition-all ${
+              categoryFilter === 'FISICO' ? 'text-white border-b-2 border-[#2563EB]' : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            Físicos (Luanda)
+          </button>
+          <button
+            onClick={() => setCategoryFilter('DIGITAL')}
+            className={`px-4 py-2 font-display text-sm font-semibold transition-all ${
+              categoryFilter === 'DIGITAL' ? 'text-white border-b-2 border-[#2563EB]' : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            Digitais (Infoprodutos)
           </button>
           <button
             onClick={() => setCategoryFilter('featured')}
@@ -243,7 +337,7 @@ export function MarketplaceClient({ userId, onOpenChat }: MarketplaceClientProps
             }`}
           >
             <Flame className="w-4 h-4 text-amber-500 fill-amber-500/20" />
-            <span>Exclusivos Destaques</span>
+            <span>Destaques</span>
           </button>
         </div>
 
@@ -328,16 +422,27 @@ export function MarketplaceClient({ userId, onOpenChat }: MarketplaceClientProps
               {products
                 .filter(p => {
                   if (categoryFilter === 'featured') return p.featured;
+                  if (categoryFilter === 'FISICO' || categoryFilter === 'DIGITAL') return p.tipo === categoryFilter;
                   return true;
                 })
                 .filter(p => p.nome.toLowerCase().includes(searchWord.toLowerCase()))
                 .map(prod => (
                   <div 
                     key={prod.id} 
-                    className="group bg-[#0B0F19]/80 rounded-3xl overflow-hidden border border-white/5 p-5 space-y-4 hover:border-white/10 transition-colors cursor-pointer flex flex-col justify-between"
+                    className="group bg-[#0B0F19]/80 rounded-3xl overflow-hidden border border-white/5 p-5 space-y-4 hover:border-white/10 transition-all hover:translate-y-[-2px] cursor-pointer flex flex-col justify-between"
                     onClick={() => { setSelectedProduct(prod); setCheckoutModalOpen(false); }}
                   >
                     <div className="space-y-3">
+                      <div className="flex justify-between items-start">
+                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
+                          prod.tipo === 'DIGITAL' 
+                            ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20' 
+                            : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                        }`}>
+                          {prod.tipo === 'DIGITAL' ? 'INFOPRODUTO' : 'PRODUTO FÍSICO'}
+                        </span>
+                        <span className="text-[10px] text-slate-500">{prod.categoria}</span>
+                      </div>
                       {prod.imageUrl && (
                         <div className="w-full h-36 rounded-2xl overflow-hidden bg-slate-900 border border-white/5 relative">
                           <img 
@@ -467,16 +572,20 @@ export function MarketplaceClient({ userId, onOpenChat }: MarketplaceClientProps
               </div>
 
               {/* Price Tag info */}
-              <div className="bg-slate-900/60 p-4 rounded-2xl flex justify-between items-center">
+              <div className="bg-slate-900/60 p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-center gap-4">
                 <div>
-                  <div className="text-[10px] text-slate-500 font-mono">Valor Unitário</div>
+                  <div className="text-[10px] text-slate-500 font-mono">Valor do Investimento</div>
                   <div className="text-2xl font-display font-black text-[#2563EB]">{selectedProduct.preço.toLocaleString()} Kz</div>
                 </div>
                 <button
                   onClick={() => setCheckoutModalOpen(true)}
-                  className="px-6 py-3 bg-gradient-to-r from-blue-700 to-blue-600 hover:from-blue-600 hover:to-blue-500 text-white font-bold text-xs font-mono tracking-wider rounded-xl transition-all shadow-lg hover:shadow-blue-500/20 active:scale-95"
+                  className={`w-full sm:w-auto px-6 py-3 font-bold text-xs font-mono tracking-wider rounded-xl transition-all shadow-lg hover:shadow-blue-500/20 active:scale-95 text-white ${
+                    selectedProduct.tipo === 'DIGITAL'
+                      ? 'bg-gradient-to-r from-purple-700 to-purple-600 hover:from-purple-600'
+                      : 'bg-gradient-to-r from-blue-700 to-blue-600 hover:from-blue-600'
+                  }`}
                 >
-                  COMPRAR JÁ (PAGUE NA ENTREGA)
+                  {selectedProduct.tipo === 'DIGITAL' ? 'PAGAR ONLINE & ACEDER JÁ' : 'COMPRAR JÁ (PAGUE NA ENTREGA)'}
                 </button>
               </div>
 
@@ -564,7 +673,9 @@ export function MarketplaceClient({ userId, onOpenChat }: MarketplaceClientProps
               className="bg-[#0B0F19] border border-white/10 rounded-3xl max-w-lg w-full p-6 md:p-8 space-y-4 max-h-[95vh] overflow-y-auto"
             >
               <div className="flex justify-between items-center">
-                <h3 className="font-display font-black text-xl text-white">Guia de Encomenda Segura (CoD)</h3>
+                <h3 className="font-display font-black text-xl text-white">
+                  {selectedProduct.tipo === 'DIGITAL' ? 'Finalizar Pagamento Digital' : 'Guia de Encomenda Segura (CoD)'}
+                </h3>
                 <button 
                   onClick={() => setCheckoutModalOpen(false)}
                   className="p-1 rounded-lg bg-slate-800 text-slate-400 hover:text-white"
@@ -581,48 +692,82 @@ export function MarketplaceClient({ userId, onOpenChat }: MarketplaceClientProps
 
               <div className="bg-slate-900/60 p-3.5 rounded-xl flex items-center gap-2 text-xs text-slate-400 select-none">
                 <Info className="w-4 h-4 text-blue-400 shrink-0" />
-                <span>O pagamento é efetuado em Kwanza físico, por Multicaixa Express ou IBAN <strong>APENAS</strong> no momento da verificação física do produto à sua porta.</span>
+                {selectedProduct.tipo === 'DIGITAL' ? (
+                  <span>Os infoprodutos são liberados <strong>automaticamente</strong> após confirmação do pagamento online pela nossa equipe administrativa.</span>
+                ) : (
+                  <span>O pagamento é efetuado em Kwanza físico, por Multicaixa Express ou IBAN <strong>APENAS</strong> no momento da verificação física do produto à sua porta.</span>
+                )}
               </div>
 
               <form onSubmit={handlePlaceOrderSubmit} className="space-y-4">
-                {/* 1. Neighborhood selector */}
-                <div className="space-y-1">
-                  <label className="text-xs font-mono uppercase text-slate-400 block">Selecione o Bairro em Luanda</label>
-                  <select
-                    required
-                    className="w-full bg-slate-950 border border-white/10 rounded-xl px-3.5 py-3 text-sm text-white focus:outline-none focus:border-blue-500"
-                    value={bairroSelection}
-                    onChange={(e) => handleBairroChange(e.target.value)}
-                  >
-                    <option value="">Selecione um bairro...</option>
-                    <option value="Maianga">Maianga (Fiel)</option>
-                    <option value="Talatona">Talatona (Residencial)</option>
-                    <option value="Viana">Viana (Comercial)</option>
-                    <option value="Benfica">Benfica</option>
-                    <option value="Kilamba">Centralidade do Kilamba</option>
-                    <option value="Cazenga">Cazenga (Popular)</option>
-                    {deliveryFees.map(df => (
-                      <option key={df.id} value={df.bairro}>{df.bairro}</option>
-                    ))}
-                  </select>
-                </div>
+                {selectedProduct.tipo === 'FISICO' ? (
+                  <>
+                    {/* 1. Neighborhood selector */}
+                    <div className="space-y-1">
+                      <label className="text-xs font-mono uppercase text-slate-400 block">Selecione o Bairro em Luanda</label>
+                      <select
+                        required
+                        className="w-full bg-slate-950 border border-white/10 rounded-xl px-3.5 py-3 text-sm text-white focus:outline-none focus:border-blue-500"
+                        value={bairroSelection}
+                        onChange={(e) => handleBairroChange(e.target.value)}
+                      >
+                        <option value="">Selecione um bairro...</option>
+                        {LUANDA_BAIRROS.map(b => (
+                          <option key={b} value={b}>{b}</option>
+                        ))}
+                      </select>
+                    </div>
 
-                {/* 2. Detailed delivery address */}
-                <div className="space-y-1">
-                  <label className="text-xs font-mono uppercase text-slate-400 block">Ponto de Referência / Casa / Rua</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ex: Condomínio Jardim de Rosas, Bloco G, Casa 34A"
-                    className="w-full bg-slate-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white"
-                    value={moreAddress}
-                    onChange={(e) => setMoreAddress(e.target.value)}
-                  />
-                </div>
+                    {/* 2. Detailed delivery address */}
+                    <div className="space-y-1">
+                      <label className="text-xs font-mono uppercase text-slate-400 block">Ponto de Referência / Casa / Rua</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Ex: Condomínio Jardim de Rosas, Bloco G, Casa 34A"
+                        className="w-full bg-slate-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white"
+                        value={moreAddress}
+                        onChange={(e) => setMoreAddress(e.target.value)}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {/* Digital specific: Payment Method */}
+                    <div className="space-y-2">
+                      <label className="text-xs font-mono uppercase text-slate-400 block">Método de Pagamento Online</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {[
+                          { id: 'Transferência', icon: Building, label: 'IBAN / Transf.' },
+                          { id: 'Unitel Money', icon: Smartphone, label: 'Unitel Money' },
+                          { id: 'MCX Express', icon: CreditCard, label: 'MCX Express' },
+                          { id: 'Referência', icon: Tag, label: 'Ref. Bancária' }
+                        ].map(method => (
+                          <button
+                            key={method.id}
+                            type="button"
+                            onClick={() => setOnlineChannel(method.id as any)}
+                            className={`flex items-center gap-2 p-3 rounded-xl border text-[10px] font-bold transition-all ${
+                              onlineChannel === method.id 
+                                ? 'bg-purple-500/10 border-purple-500 text-purple-400' 
+                                : 'bg-slate-950/50 border-white/5 text-slate-400 hover:border-white/20'
+                            }`}
+                          >
+                            <method.icon className="w-4 h-4" />
+                            {method.label}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="p-3 bg-purple-500/5 border border-purple-500/10 rounded-xl text-[10px] text-purple-400 leading-relaxed italic">
+                        * Após confirmar o pedido, siga as instruções de pagamento enviadas no chat para liberar o seu acesso permanente.
+                      </div>
+                    </div>
+                  </>
+                )}
 
                 {/* 3. Telephone */}
                 <div className="space-y-1">
-                  <label className="text-xs font-mono uppercase text-slate-400 block">Telemóvel de Contacto Direto</label>
+                  <label className="text-xs font-mono uppercase text-slate-400 block">Telemóvel para Contacto / WhatsApp</label>
                   <input
                     type="tel"
                     required
@@ -675,21 +820,25 @@ export function MarketplaceClient({ userId, onOpenChat }: MarketplaceClientProps
                       <span>-{(selectedProduct.preço * appliedCoupon.desconto / 100).toLocaleString()} Kz</span>
                     </div>
                   )}
-                  <div className="flex justify-between">
-                    <span className="text-slate-450">Taxa de Frete Bairro (Maianga/Talatona):</span>
-                    <span className="text-slate-200">{deliveryFeeValue.toLocaleString()} Kz</span>
-                  </div>
+                  {selectedProduct.tipo === 'FISICO' && (
+                    <div className="flex justify-between">
+                      <span className="text-slate-450">Taxa de Frete Luanda:</span>
+                      <span className="text-slate-200">{deliveryFeeValue.toLocaleString()} Kz</span>
+                    </div>
+                  )}
                   
                   {/* Total overall calculation */}
                   {(() => {
                     const priceValue = selectedProduct.preço;
                     const discountVal = appliedCoupon ? (priceValue * appliedCoupon.desconto / 100) : 0;
-                    const computedTotal = (priceValue - discountVal) + deliveryFeeValue;
+                    const computedTotal = (priceValue - discountVal) + (selectedProduct.tipo === 'FISICO' ? deliveryFeeValue : 0);
 
                     return (
                       <div className="flex justify-between border-t border-slate-800 pt-1.5 text-sm font-bold">
-                        <span className="text-slate-100">Total Seguro a Pagar na Entrega:</span>
-                        <span className="text-emerald-440 text-base font-display font-black">{computedTotal.toLocaleString()} Kz</span>
+                        <span className="text-slate-100">Total {selectedProduct.tipo === 'DIGITAL' ? 'do Infoproduto' : 'a Pagar na Entrega'}:</span>
+                        <span className={`text-base font-display font-black ${selectedProduct.tipo === 'DIGITAL' ? 'text-purple-400' : 'text-emerald-440'}`}>
+                          {computedTotal.toLocaleString()} Kz
+                        </span>
                       </div>
                     );
                   })()}
@@ -698,14 +847,18 @@ export function MarketplaceClient({ userId, onOpenChat }: MarketplaceClientProps
                 <button
                   type="submit"
                   disabled={orderProcessing}
-                  className="w-full py-3 bg-gradient-to-r from-blue-700 to-blue-600 hover:from-blue-600 text-white font-mono font-bold text-xs rounded-xl transition-all shadow-lg hover:shadow-blue-500/25 flex items-center justify-center gap-1.5"
+                  className={`w-full py-3 text-white font-mono font-bold text-xs rounded-xl transition-all shadow-lg flex items-center justify-center gap-1.5 ${
+                    selectedProduct.status === 'DIGITAL' 
+                      ? 'bg-gradient-to-r from-purple-700 to-purple-600 hover:shadow-purple-500/25' 
+                      : 'bg-gradient-to-r from-blue-700 to-blue-600 hover:shadow-blue-500/25'
+                  }`}
                 >
                   {orderProcessing ? (
                     <span className="w-5 h-5 border-2 border-white/35 border-t-white rounded-full animate-spin"></span>
                   ) : (
                     <>
-                      <ShoppingBagIcon className="w-4 h-4 text-sky-400" />
-                      <span>Confirmar Encomenda Sem Riscos</span>
+                      {selectedProduct.tipo === 'DIGITAL' ? <CreditCard className="w-4 h-4" /> : <ShoppingBagIcon className="w-4 h-4 text-sky-400" />}
+                      <span>{selectedProduct.tipo === 'DIGITAL' ? 'Confirmar e Pagar Online' : 'Confirmar Encomenda Sem Riscos'}</span>
                     </>
                   )}
                 </button>
@@ -714,8 +867,12 @@ export function MarketplaceClient({ userId, onOpenChat }: MarketplaceClientProps
           </motion.div>
         )}
       </AnimatePresence>
+    </>
+  ) : (
+    <MyDigitalProducts />
+  )}
 
-      {/* COMPLETED SUCCESS SCREEN ALERT */}
+  {/* COMPLETED SUCCESS SCREEN ALERT */}
       {orderSuccessRef && (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-[#0B0F19]/90 border border-white/10 rounded-3xl max-w-sm w-full p-6 text-center space-y-4">
@@ -741,4 +898,161 @@ export function MarketplaceClient({ userId, onOpenChat }: MarketplaceClientProps
 
     </div>
   );
+
+  function MyDigitalProducts() {
+    return (
+      <div className="space-y-8 animate-in fade-in slide-in-from-bottom-5 duration-500">
+        <div className="bg-[#0B0F19] p-8 rounded-3xl border border-white/10 relative overflow-hidden">
+          <div className="relative z-10 space-y-2">
+            <h2 className="text-2xl font-display font-black text-white italic">Biblioteca Digital de Elite</h2>
+            <p className="text-sm text-slate-400 max-w-md">Gerencie os seus cursos, ebooks e softwares adquiridos. O seu conhecimento é o seu maior ativo em Angola.</p>
+          </div>
+          <PlayCircle className="absolute -right-10 -bottom-10 w-64 h-64 text-blue-500/5 rotate-12" />
+        </div>
+
+        {digitalAccessList.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 bg-slate-900/30 rounded-3xl border border-dashed border-white/10 space-y-4">
+            <ShoppingBag className="w-12 h-12 text-slate-700" />
+            <div className="text-center">
+              <h4 className="text-slate-400 font-bold">Nenhum infoproduto adquirido</h4>
+              <p className="text-xs text-slate-500">Explore o marketplace para encontrar conteúdos exclusivos.</p>
+            </div>
+            <button 
+              onClick={() => setActiveTab('marketplace')}
+              className="px-6 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold"
+            >
+              Ir para o Marketplace
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {digitalAccessList.map(access => (
+              <div key={access.id} className="bg-slate-900/60 border border-white/5 rounded-3xl p-5 space-y-4 hover:border-blue-500/30 transition-all group">
+                <div className="flex gap-4">
+                  <div className="w-20 h-20 bg-slate-800 rounded-2xl shrink-0 overflow-hidden border border-white/5">
+                    {access.product_imageUrl ? (
+                      <img src={access.product_imageUrl} className="w-full h-full object-cover" />
+                    ) : (
+                      <PlayCircle className="w-full h-full p-6 text-slate-600" />
+                    )}
+                  </div>
+                  <div className="flex-1 space-y-1">
+                    <h4 className="text-sm font-bold text-white leading-tight">{access.product_nome}</h4>
+                    <div className="text-[10px] text-slate-500 flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      Adquirido em {new Date(access.accessGrantedAt).toLocaleDateString()}
+                    </div>
+                    <div className="pt-2">
+                       <div className="w-full bg-slate-800 h-1 rounded-full overflow-hidden">
+                          <div className="bg-blue-500 h-full" style={{ width: `${access.progress}%` }}></div>
+                       </div>
+                       <span className="text-[9px] text-blue-400 font-bold mt-1 block">{access.progress}% concluído</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 pt-2">
+                  <button 
+                    onClick={() => {
+                      setSelectedAccess(access);
+                      // In a real app, this would open the course player or file view
+                    }}
+                    className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white py-2.5 rounded-xl text-[10px] font-bold"
+                  >
+                    <PlayCircle className="w-3.5 h-3.5" />
+                    ACEDER CONTEÚDO
+                  </button>
+                  <button className="flex items-center justify-center gap-2 bg-slate-800 hover:bg-white/10 text-slate-300 py-2.5 rounded-xl text-[10px] font-bold">
+                    <Download className="w-3.5 h-3.5" />
+                    DOWNLOAD
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* MODAL PARA VISUALIZAÇÃO DE CONTEÚDO DIGITAL (MOCK) */}
+        <AnimatePresence>
+          {selectedAccess && (
+            <div className="fixed inset-0 bg-black/95 backdrop-blur-xl z-[60] flex items-center justify-center p-4">
+              <div className="bg-[#0B0F19] border border-white/10 rounded-3xl max-w-4xl w-full h-[85vh] flex flex-col">
+                <div className="p-6 border-b border-white/5 flex justify-between items-center bg-slate-900/50 rounded-t-3xl">
+                  <div className="flex items-center gap-3">
+                    <PlayCircle className="w-6 h-6 text-blue-500" />
+                    <div>
+                      <h3 className="text-white font-black text-lg">{selectedAccess.product_nome}</h3>
+                      <p className="text-[10px] text-slate-400">Ambiente de Aprendizagem Seguro</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setSelectedAccess(null)} className="p-2 bg-slate-800 rounded-xl text-slate-400 hover:text-white">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-8 flex flex-col items-center justify-center space-y-6">
+                   <div className="w-full max-w-2xl aspect-video bg-black rounded-3xl border border-white/10 flex flex-col items-center justify-center gap-4 relative overflow-hidden">
+                      <Sparkles className="absolute top-10 right-10 w-32 h-32 text-blue-500/5 animate-pulse" />
+                      <PlayCircle className="w-16 h-16 text-blue-500 animate-pulse" />
+                      <div className="text-center z-10">
+                        <p className="text-white font-bold">Vídeo Aula em Preparação...</p>
+                        <p className="text-xs text-slate-500">O streaming seguro está a ser otimizado para a sua ligação em Angola.</p>
+                      </div>
+                   </div>
+
+                   <div className="w-full max-w-2xl grid grid-cols-1 md:grid-cols-2 gap-4">
+                     <div className="bg-slate-900/40 p-5 rounded-2xl border border-white/5 space-y-3">
+                        <h5 className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ">Ficheiros para Download</h5>
+                        <div className="space-y-2">
+                           <div className="flex items-center justify-between p-2 bg-slate-950 rounded-lg border border-white/5">
+                              <div className="flex items-center gap-2">
+                                <FileText className="w-4 h-4 text-purple-400" />
+                                <span className="text-[10px] text-slate-300">Guia de Implementação .pdf</span>
+                              </div>
+                              <Download className="w-3.5 h-3.5 text-slate-500 hover:text-white cursor-pointer" />
+                           </div>
+                           <div className="flex items-center justify-between p-2 bg-slate-950 rounded-lg border border-white/5">
+                              <div className="flex items-center gap-2">
+                                <Tag className="w-4 h-4 text-blue-400" />
+                                <span className="text-[10px] text-slate-300">Templates Exclusivos .zip</span>
+                              </div>
+                              <Download className="w-3.5 h-3.5 text-slate-500 hover:text-white cursor-pointer" />
+                           </div>
+                        </div>
+                     </div>
+
+                     <div className="bg-slate-900/40 p-5 rounded-2xl border border-white/5 space-y-3">
+                        <h5 className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ">Links e Acessos Externos</h5>
+                        <div className="space-y-2">
+                           <div className="flex items-center justify-between p-2 bg-slate-950 rounded-lg border border-white/5">
+                              <div className="flex items-center gap-2">
+                                <Globe className="w-4 h-4 text-emerald-400" />
+                                <span className="text-[10px] text-slate-300">Grupo VIP no Telegram</span>
+                              </div>
+                              <LinkIcon className="w-3.5 h-3.5 text-slate-500 hover:text-white cursor-pointer" />
+                           </div>
+                        </div>
+                     </div>
+                   </div>
+
+                   <div className="pt-10 flex gap-4">
+                      <button 
+                        onClick={async () => {
+                          const newProgress = Math.min(selectedAccess.progress + 10, 100);
+                          await updateDigitalProgress(selectedAccess.id, newProgress);
+                          setSelectedAccess({...selectedAccess, progress: newProgress});
+                        }}
+                        className="px-8 py-3 bg-white text-black font-black text-xs rounded-2xl hover:bg-slate-200 transition-colors"
+                      >
+                        MARCAR COMO CONCLUÍDO (+10%)
+                      </button>
+                   </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </AnimatePresence>
+      </div>
+    );
+  }
 }

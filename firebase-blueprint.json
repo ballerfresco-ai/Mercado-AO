@@ -25,11 +25,20 @@
         "comissão_afiliado": { "type": "number", "description": "Affiliate commission percentage (0-100)." },
         "produtor_id": { "type": "string" },
         "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "tipo": { "type": "string", "enum": ["FISICO", "DIGITAL"] },
+        "categoria": { "type": "string" },
         "featured": { "type": "boolean", "description": "Whether the product is highlighted on homepage." },
         "imageUrl": { "type": "string" },
+        "videoUrl": { "type": "string" },
+        "fileUrl": { "type": "string" },
+        "fileName": { "type": "string" },
+        "externalLink": { "type": "string" },
+        "digitalContent": { "type": "string" },
+        "salesCount": { "type": "number" },
+        "rejectionReason": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["id", "nome", "descrição", "preço", "comissão_afiliado", "produtor_id", "status"]
+      "required": ["id", "nome", "descrição", "preço", "comissão_afiliado", "produtor_id", "status", "tipo", "categoria", "salesCount"]
     },
     "Order": {
       "title": "Order",
@@ -51,9 +60,12 @@
         "comissao_produtor_paga": { "type": "number" },
         "delivery_address": { "type": "string" },
         "phone": { "type": "string" },
+        "payment_method": { "type": "string", "enum": ["COD", "ONLINE"] },
+        "payment_channel": { "type": "string" },
+        "digital_access_granted": { "type": "boolean" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["id", "cliente_id", "produto_id", "status", "bairro", "taxa_entrega", "total"]
+      "required": ["id", "cliente_id", "produto_id", "status", "total", "payment_method"]
     },
     "Wallet": {
       "title": "Wallet",
@@ -114,9 +126,25 @@
         "id": { "type": "string" },
         "código": { "type": "string" },
         "desconto": { "type": "number", "description": "Discount as percentage (e.g. 15 for 15% off)." },
-        "validade": { "type": "string", "description": "Expiration date string (YYYY-MM-DD)." }
+        "validade": { "type": "string", "description": "Expiration date string (YYYY-MM-DD)." },
+        "produtor_id": { "type": "string", "description": "Optional producer ID who owns the coupon." }
       },
       "required": ["id", "código", "desconto", "validade"]
+    },
+    "MaterialApoio": {
+      "title": "MaterialApoio",
+      "description": "Support material for affiliates provided by producers.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "produtor_id": { "type": "string" },
+        "titulo": { "type": "string" },
+        "descricao": { "type": "string" },
+        "link": { "type": "string" },
+        "tipo": { "type": "string", "enum": ["Link", "Arquivo", "Texto"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "produtor_id", "titulo", "descricao", "tipo", "createdAt"]
     },
     "ChatSimple": {
       "title": "ChatSimple",
@@ -145,6 +173,22 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "user_id", "title", "message", "read", "createdAt"]
+    },
+    "DigitalAccess": {
+      "title": "DigitalAccess",
+      "description": "Tracks user access to digital content.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "user_id": { "type": "string" },
+        "product_id": { "type": "string" },
+        "product_nome": { "type": "string" },
+        "product_imageUrl": { "type": "string" },
+        "progress": { "type": "number" },
+        "lastViewedAt": { "type": "string", "format": "date-time" },
+        "accessGrantedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "user_id", "product_id", "progress", "accessGrantedAt"]
     }
   },
   "firestore": {
@@ -180,6 +224,10 @@
       "schema": "Coupon",
       "description": "Discount coupons validation."
     },
+    "/material_apoio/{materialId}": {
+      "schema": "MaterialApoio",
+      "description": "Support resources for affiliates."
+    },
     "/chats/{chatId}": {
       "schema": "ChatSimple",
       "description": "Direct message chat documents between order buyers and sellers (producers)."
@@ -187,6 +235,10 @@
     "/notifications/{notificationId}": {
       "schema": "Notification",
       "description": "Live user alert feed."
+    },
+    "/digital_access/{accessId}": {
+      "schema": "DigitalAccess",
+      "description": "User digital purchases permissions."
     }
   }
 }

@@ -9,7 +9,10 @@ import {
   saveCoupon,
   deleteCoupon,
   createMaterialApoio,
-  deleteMaterialApoio
+  deleteMaterialApoio,
+  handleFirestoreError,
+  OperationType,
+  uploadToStorage
 } from '../firebase';
 import { generateProductDescription } from '../services/gemini';
 import { 
@@ -71,6 +74,16 @@ export function DashboardProducer({ userId, userProfile, onOpenChat }: Dashboard
   const [comissaoAfiliadoInput, setComissaoAfiliadoInput] = useState('10');
   const [imageUrlInput, setImageUrlInput] = useState('');
   const [isUploading, setIsUploading] = useState(false);
+  const [prodType, setProdType] = useState<'FISICO' | 'DIGITAL'>('FISICO');
+  const [prodCategoria, setProdCategoria] = useState('Geral');
+  
+  // Digital specific entries
+  const [videoUrl, setVideoUrl] = useState('');
+  const [fileUrl, setFileUrl] = useState('');
+  const [fileName, setFileName] = useState('');
+  const [externalLink, setExternalLink] = useState('');
+  const [digitalContent, setDigitalContent] = useState('');
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
 
   // Coupon form
   const [couponCode, setCouponCode] = useState('');
@@ -105,12 +118,16 @@ export function DashboardProducer({ userId, userProfile, onOpenChat }: Dashboard
     const qProds = query(collection(db, 'products'), where('produtor_id', '==', userId));
     const unsubProds = onSnapshot(qProds, (snap) => {
       setProducts(snap.docs.map(d => d.data() as Product));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'products');
     });
 
     // 2. Orders belonging to this producer's products
     const qOrders = query(collection(db, 'orders'), where('produtor_id', '==', userId));
     const unsubOrders = onSnapshot(qOrders, (snap) => {
       setOrders(snap.docs.map(d => d.data() as Order));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'orders');
     });
 
     // 3. Wallet
@@ -119,24 +136,32 @@ export function DashboardProducer({ userId, userProfile, onOpenChat }: Dashboard
       if (match) {
         setWallet(match.data() as Wallet);
       }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'wallets');
     });
 
     // 4. Withdrawals of this user
     const qWith = query(collection(db, 'withdrawals'), where('user_id', '==', userId));
     const unsubWith = onSnapshot(qWith, (snap) => {
       setWithdrawals(snap.docs.map(d => d.data() as Withdrawal));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'withdrawals');
     });
 
     // 5. Coupons of this producer
     const qCoupons = query(collection(db, 'coupons'), where('produtor_id', '==', userId));
     const unsubCoupons = onSnapshot(qCoupons, (snap) => {
       setCoupons(snap.docs.map(d => d.data() as Coupon));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'coupons');
     });
 
     // 6. Material de Apoio
     const qMaterials = query(collection(db, 'material_apoio'), where('produtor_id', '==', userId));
     const unsubMaterials = onSnapshot(qMaterials, (snap) => {
       setMaterials(snap.docs.map(d => d.data() as MaterialApoio));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'material_apoio');
     });
 
     // 7. Affiliates fetch - filter from users collection
@@ -225,6 +250,13 @@ export function DashboardProducer({ userId, userProfile, onOpenChat }: Dashboard
     e.preventDefault();
     if (!prodNome.trim() || !prodDescricao.trim() || !prodPreco) return;
 
+    if (prodType === 'DIGITAL') {
+      if (!videoUrl && !fileUrl && !externalLink && !digitalContent) {
+        alert("Por favor forneça pelo menos um meio de entrega digital (Vídeo, Arquivo, Link ou Conteúdo Texto)!");
+        return;
+      }
+    }
+
     setSavingProduct(true);
     setApiError(null);
     try {
@@ -234,7 +266,14 @@ export function DashboardProducer({ userId, userProfile, onOpenChat }: Dashboard
         prodDescricao,
         parseFloat(prodPreco),
         parseInt(comissaoAfiliadoInput),
-        imageUrlInput
+        imageUrlInput,
+        prodType,
+        prodCategoria,
+        videoUrl,
+        fileUrl,
+        fileName,
+        externalLink,
+        digitalContent
       );
       
       triggerSuccess("Produto cadastrado com sucesso! Aguarda aprovação do ADM.");
@@ -246,6 +285,13 @@ export function DashboardProducer({ userId, userProfile, onOpenChat }: Dashboard
       setImageUrlInput('');
       setBulletsAi('');
       setComissaoAfiliadoInput('10');
+      setProdType('FISICO');
+      setProdCategoria('Geral');
+      setVideoUrl('');
+      setFileUrl('');
+      setFileName('');
+      setExternalLink('');
+      setDigitalContent('');
       
       setActiveTab('meus_produtos');
     } catch (err: any) {
@@ -314,26 +360,37 @@ export function DashboardProducer({ userId, userProfile, onOpenChat }: Dashboard
     setTimeout(() => setSuccessMsg(null), 3500);
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 2 * 1024 * 1024) {
-      alert("A imagem é muito grande. Escolha uma imagem com menos de 2MB.");
-      return;
-    }
-
     setIsUploading(true);
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setImageUrlInput(reader.result as string);
+    try {
+      const url = await uploadToStorage(`products/images/${userId}/${Date.now()}_${file.name}`, file);
+      setImageUrlInput(url);
+      triggerSuccess("Imagem do produto carregada com sucesso!");
+    } catch (error: any) {
+      alert("Erro no upload da imagem: " + error.message);
+    } finally {
       setIsUploading(false);
-    };
-    reader.onerror = () => {
-      alert("Erro ao ler o arquivo.");
-      setIsUploading(false);
-    };
-    reader.readAsDataURL(file);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingFile(true);
+    try {
+      const url = await uploadToStorage(`products/files/${userId}/${Date.now()}_${file.name}`, file);
+      setFileUrl(url);
+      setFileName(file.name);
+      triggerSuccess("Arquivo digital carregado com sucesso!");
+    } catch (error: any) {
+      alert("Erro no upload do arquivo: " + error.message);
+    } finally {
+      setIsUploadingFile(false);
+    }
   };
 
   // Computations
@@ -416,6 +473,28 @@ export function DashboardProducer({ userId, userProfile, onOpenChat }: Dashboard
         {/* MEUS PRODUTOS */}
         {activeTab === 'meus_produtos' && (
           <div className="space-y-6">
+            {/* PRODUCT TYPE QUICK STATS */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-[#0B0F19] p-4 rounded-2xl border border-white/5 space-y-1">
+                <div className="text-[10px] font-mono text-slate-500 uppercase">Total de Produtos</div>
+                <div className="text-xl font-display font-black text-white">{products.length}</div>
+              </div>
+              <div className="bg-[#0B0F19] p-4 rounded-2xl border border-white/5 space-y-1">
+                <div className="text-[10px] font-mono text-slate-500 uppercase">Infoprodutos</div>
+                <div className="text-xl font-display font-black text-purple-400">{products.filter(p => p.tipo === 'DIGITAL').length}</div>
+              </div>
+              <div className="bg-[#0B0F19] p-4 rounded-2xl border border-white/5 space-y-1">
+                <div className="text-[10px] font-mono text-slate-500 uppercase">Físicos CoD</div>
+                <div className="text-xl font-display font-black text-blue-400">{products.filter(p => !p.tipo || p.tipo === 'FISICO').length}</div>
+              </div>
+              <div className="bg-[#0B0F19] p-4 rounded-2xl border border-white/5 space-y-1">
+                <div className="text-[10px] font-mono text-slate-500 uppercase">Vendas Digitais</div>
+                <div className="text-xl font-display font-black text-emerald-400">
+                  {products.filter(p => p.tipo === 'DIGITAL').reduce((acc, p) => acc + (p.salesCount || 0), 0)}
+                </div>
+              </div>
+            </div>
+
             <div className="flex justify-between items-center">
               <h3 className="font-display font-medium text-lg">Catálogo Geral ({products.length})</h3>
               <button 
@@ -444,14 +523,21 @@ export function DashboardProducer({ userId, userProfile, onOpenChat }: Dashboard
                     <div className="p-5 space-y-3.5">
                       <div className="flex justify-between items-start gap-2">
                         {/* Status Label */}
-                        <span className={`px-2 py-0.5 rounded text-[9px] font-mono font-black ${
-                          prod.status === 'approved' ? 'bg-green-500/10 text-green-400' :
-                          prod.status === 'rejected' ? 'bg-red-500/10 text-red-400' :
-                          'bg-slate-800 text-slate-400'
-                        }`}>
-                          {prod.status === 'approved' ? 'PUBLICADO' :
-                           prod.status === 'rejected' ? 'REJEITADO' : 'AGUARDA REVISÃO'}
-                        </span>
+                        <div className="flex flex-col gap-1">
+                          <span className={`px-2 py-0.5 rounded text-[9px] font-mono font-black w-fit ${
+                            prod.status === 'approved' ? 'bg-green-500/10 text-green-400' :
+                            prod.status === 'rejected' ? 'bg-red-500/10 text-red-400' :
+                            'bg-slate-800 text-slate-400'
+                          }`}>
+                            {prod.status === 'approved' ? 'PUBLICADO' :
+                             prod.status === 'rejected' ? 'REJEITADO' : 'AGUARDA REVISÃO'}
+                          </span>
+                          <span className={`px-2 py-0.5 rounded text-[8px] font-bold w-fit ${
+                            prod.tipo === 'DIGITAL' ? 'bg-purple-500/10 text-purple-400' : 'bg-blue-500/10 text-blue-400'
+                          }`}>
+                            {prod.tipo === 'DIGITAL' ? 'INFOPRODUTO' : 'FÍSICO'}
+                          </span>
+                        </div>
                         
                         {prod.featured && (
                           <span className="bg-amber-500 text-slate-950 font-display font-black text-[9px] p-0.5 px-2 rounded-full flex items-center gap-0.5 shadow-lg shadow-amber-500/20">
@@ -758,16 +844,60 @@ export function DashboardProducer({ userId, userProfile, onOpenChat }: Dashboard
             <form onSubmit={handleCreateProductSubmit} className="bg-slate-900/30 p-6 rounded-2xl border border-white/10 space-y-4">
               <h3 className="font-display font-bold text-lg">Detalhes do Novo Produto</h3>
               
-              <div className="space-y-1">
-                <label className="text-xs font-mono uppercase text-slate-450 block">Nome Comercial</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ex: Fuba de Bombó Lubango Premium"
-                  className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-blue-500 placeholder-slate-500"
-                  value={prodNome}
-                  onChange={(e) => setProdNome(e.target.value)}
-                />
+              {/* Product Type Selection */}
+              <div className="space-y-2">
+                 <label className="text-xs font-mono uppercase text-slate-450 block">Tipo de Produto</label>
+                 <div className="flex gap-2">
+                   <button
+                    type="button"
+                    onClick={() => setProdType('FISICO')}
+                    className={`flex-1 py-3 rounded-xl border font-bold text-xs transition-all ${
+                      prodType === 'FISICO' ? 'bg-blue-600/10 border-blue-500 text-blue-400' : 'bg-slate-950 border-white/5 text-slate-500'
+                    }`}
+                   >
+                     🛍️ Produto Físico (CoD)
+                   </button>
+                   <button
+                    type="button"
+                    onClick={() => setProdType('DIGITAL')}
+                    className={`flex-1 py-3 rounded-xl border font-bold text-xs transition-all ${
+                      prodType === 'DIGITAL' ? 'bg-purple-600/10 border-purple-500 text-purple-400' : 'bg-slate-950 border-white/5 text-slate-500'
+                    }`}
+                   >
+                     🚀 Infoproduto (Digital)
+                   </button>
+                 </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-mono uppercase text-slate-450 block">Nome Comercial</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder={prodType === 'DIGITAL' ? "Ex: Curso de Marketing no WhatsApp" : "Ex: Fuba de Bombó Lubango"}
+                    className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-blue-500 placeholder-slate-500"
+                    value={prodNome}
+                    onChange={(e) => setProdNome(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-mono uppercase text-slate-450 block">Categoria</label>
+                  <select
+                    className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-blue-500"
+                    value={prodCategoria}
+                    onChange={(e) => setProdCategoria(e.target.value)}
+                  >
+                    <option value="Geral">Geral</option>
+                    <option value="E-books">E-books</option>
+                    <option value="Cursos Online">Cursos Online</option>
+                    <option value="Software/Licenças">Software/Licenças</option>
+                    <option value="Templates">Templates</option>
+                    <option value="Alimentação">Alimentação</option>
+                    <option value="Moda">Moda</option>
+                    <option value="Eletrónicos">Eletrónicos</option>
+                  </select>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -797,6 +927,66 @@ export function DashboardProducer({ userId, userProfile, onOpenChat }: Dashboard
                   </select>
                 </div>
               </div>
+
+              {/* Digital Specific Fields */}
+              {prodType === 'DIGITAL' && (
+                <div className="space-y-4 p-4 bg-purple-500/5 rounded-2xl border border-purple-500/10">
+                   <h4 className="text-[10px] font-mono text-purple-400 uppercase font-black">Configuração de Entrega Digital</h4>
+                   
+                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-[9px] uppercase text-slate-500 font-bold">Link de Vídeo (YouTube/Vimeo)</label>
+                        <input
+                          type="url"
+                          placeholder="https://..."
+                          className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white"
+                          value={videoUrl}
+                          onChange={(e) => setVideoUrl(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] uppercase text-slate-500 font-bold">Ficheiro Digital (Upload)</label>
+                        <div className="relative">
+                           <button 
+                            type="button" 
+                            className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-slate-400 flex items-center justify-center gap-2 hover:bg-slate-900 transition-colors"
+                           >
+                             {isUploadingFile ? <span className="animate-spin w-3 h-3 border-2 border-white/20 border-t-white rounded-full"></span> : <Upload className="w-3 h-3 text-purple-400" />}
+                             <span className="truncate">{fileUrl ? fileName : "Fazer upload arquivo"}</span>
+                           </button>
+                           <input 
+                            type="file" 
+                            onChange={handleFileUpload}
+                            className="absolute inset-0 opacity-0 cursor-pointer"
+                            disabled={isUploadingFile}
+                           />
+                        </div>
+                      </div>
+                   </div>
+
+                   <div className="space-y-1">
+                      <label className="text-[9px] uppercase text-slate-500 font-bold">Link Externo / Grupo Privado</label>
+                      <input
+                        type="url"
+                        placeholder="Ex: Link do Google Drive ou Grupo Telegram"
+                        className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white"
+                        value={externalLink}
+                        onChange={(e) => setExternalLink(e.target.value)}
+                      />
+                   </div>
+
+                   <div className="space-y-1">
+                      <label className="text-[9px] uppercase text-slate-500 font-bold">Conteúdo Texto Premium (Liberação Imediata)</label>
+                      <textarea
+                        rows={3}
+                        placeholder="Ex: Licenças, chaves de ativação ou links diretos..."
+                        className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white"
+                        value={digitalContent}
+                        onChange={(e) => setDigitalContent(e.target.value)}
+                      />
+                   </div>
+                </div>
+              )}
 
               <div className="space-y-1">
                 <label className="text-xs font-mono uppercase text-slate-450 block">Imagem Ilustrativa do Produto</label>
@@ -828,7 +1018,7 @@ export function DashboardProducer({ userId, userProfile, onOpenChat }: Dashboard
                     <input 
                       type="file" 
                       accept="image/*"
-                      onChange={handleFileChange}
+                      onChange={handleImageUpload}
                       className="absolute inset-0 opacity-0 cursor-pointer"
                       disabled={isUploading}
                     />

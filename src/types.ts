@@ -13,6 +13,7 @@ export interface UserProfile {
 }
 
 export type ProductStatus = 'pending' | 'approved' | 'rejected';
+export type ProductType = 'FISICO' | 'DIGITAL';
 
 export interface Product {
   id: string;
@@ -22,12 +23,22 @@ export interface Product {
   comissão_afiliado: number; // percentage (0-100)
   produtor_id: string;
   status: ProductStatus;
+  tipo: ProductType;
+  categoria: string;
   featured: boolean;
-  imageUrl?: string; // base64 or link
+  imageUrl?: string;
+  videoUrl?: string; // presentation video
+  fileUrl?: string; // the protected digital file
+  fileName?: string;
+  externalLink?: string;
+  digitalContent?: string; // private instructions or access key
+  salesCount: number;
+  rejectionReason?: string;
   createdAt: string;
 }
 
 export type OrderStatus = 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
+export type PaymentMethod = 'COD' | 'ONLINE';
 
 export interface Order {
   id: string;
@@ -39,17 +50,31 @@ export interface Order {
   afiliado_id?: string;
   afiliado_nome?: string;
   status: OrderStatus;
-  bairro: string;
-  taxa_entrega: number;
+  bairro?: string; // optional for digital
+  taxa_entrega: number; // 0 for digital
   subtotal: number;
   desconto: number;
   total: number;
   comissao_plataforma: number;
   comissao_afiliado_paga: number;
   comissao_produtor_paga: number;
-  delivery_address: string;
+  delivery_address?: string; // optional for digital
   phone: string;
+  payment_method: PaymentMethod;
+  payment_channel?: string;
+  digital_access_granted?: boolean;
   createdAt: string;
+}
+
+export interface UserDigitalAccess {
+  id: string; // matches product_id_user_id
+  user_id: string;
+  product_id: string;
+  product_nome: string;
+  product_imageUrl?: string;
+  progress: number; // 0-100
+  lastViewedAt: string;
+  accessGrantedAt: string;
 }
 
 export interface Wallet {

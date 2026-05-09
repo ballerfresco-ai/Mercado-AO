@@ -23,8 +23,15 @@ import {
   orderBy, 
   onSnapshot,
   getDocFromServer,
-  writeBatch
+  writeBatch,
+  increment
 } from 'firebase/firestore';
+import {
+  getStorage,
+  ref,
+  uploadBytes,
+  getDownloadURL
+} from 'firebase/storage';
 // Firebase configuration handling
 // For Vercel/Netlify: Use VITE_ environment variables
 // For AI Studio: Use the auto-generated config file
@@ -72,6 +79,9 @@ const isConfigValid = !!firebaseConfig.apiKey && !!firebaseConfig.projectId;
 import { 
   UserProfile, 
   Product, 
+  ProductType,
+  UserDigitalAccess,
+  PaymentMethod,
   Order, 
   Wallet, 
   Withdrawal, 
@@ -95,6 +105,7 @@ if (!isConfigValid) {
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
+export const storage = getStorage(app);
 
 // Authentication Provider
 const googleProvider = new GoogleAuthProvider();
@@ -469,8 +480,15 @@ export async function createProduct(
   nome: string, 
   descrição: string, 
   preço: number, 
-  comissãoAfiliado: number, 
-  imageUrl?: string
+  comissãoAfiliado: number,
+  tipo: ProductType = 'FISICO',
+  categoria: string = 'Geral',
+  imageUrl?: string,
+  videoUrl?: string,
+  fileUrl?: string,
+  fileName?: string,
+  externalLink?: string,
+  digitalContent?: string
 ): Promise<Product> {
   const path = 'products';
   try {
@@ -483,8 +501,16 @@ export async function createProduct(
       comissão_afiliado: comissãoAfiliado,
       produtor_id: produtorId,
       status: 'pending', // Starts pending ADM approval
+      tipo,
+      categoria,
       featured: false,
       imageUrl: imageUrl || '',
+      videoUrl: videoUrl || '',
+      fileUrl: fileUrl || '',
+      fileName: fileName || '',
+      externalLink: externalLink || '',
+      digitalContent: digitalContent || '',
+      salesCount: 0,
       createdAt: new Date().toISOString()
     };
 
@@ -496,7 +522,7 @@ export async function createProduct(
       id: adminNotiId,
       user_id: 'ALL_ADMS',
       title: 'Novo Produto Aguardando Aprovação',
-      message: `O produto "${nome}" foi cadastrado por um produtor e necessita de avaliação para ser publicado.`,
+      message: `O produto "${nome}" (${tipo}) foi cadastrado por um produtor e necessita de avaliação para ser publicado.`,
       read: false,
       createdAt: new Date().toISOString()
     };
@@ -508,7 +534,18 @@ export async function createProduct(
   }
 }
 
-export async function updateProductStatus(productId: string, status: ProductStatus): Promise<void> {
+export async function uploadToStorage(filePath: string, file: File | Blob): Promise<string> {
+  try {
+    const storageRef = ref(storage, filePath);
+    const snapshot = await uploadBytes(storageRef, file);
+    return await getDownloadURL(snapshot.ref);
+  } catch (error) {
+    console.error("Storage upload error:", error);
+    throw error;
+  }
+}
+
+export async function updateProductStatus(productId: string, status: ProductStatus, rejectionReason?: string): Promise<void> {
   const path = `products/${productId}`;
   try {
     const productRef = doc(db, 'products', productId);
@@ -517,11 +554,14 @@ export async function updateProductStatus(productId: string, status: ProductStat
     
     const product = productSnap.data() as Product;
     
-    await updateDoc(productRef, { status });
+    await updateDoc(productRef, { 
+      status,
+      rejectionReason: rejectionReason || ""
+    });
 
     // Notify Producer
     const notiId = `noti_prod_status_${productId}_${status}`;
-    const statusMsg = status === 'approved' ? 'foi Aprovado! Está agora visível no marketplace.' : 'foi Rejeitado pelo Administrador.';
+    const statusMsg = status === 'approved' ? 'foi Aprovado! Está agora visível no marketplace.' : `foi Rejeitado pelo Administrador. Razão: ${rejectionReason || 'Não informada'}`;
     const userNoti: Notification = {
       id: notiId,
       user_id: product.produtor_id,
@@ -778,6 +818,7 @@ export async function checkoutOrder(
       comissao_produtor_paga: comissaoProdutorPaga,
       delivery_address: deliveryAddress || '',
       phone: phone || '',
+      payment_method: product.tipo === 'DIGITAL' ? 'ONLINE' : 'COD',
       createdAt: new Date().toISOString()
     };
 
@@ -880,6 +921,39 @@ export async function updateOrderStatus(orderId: string, status: OrderStatus): P
         createdAt: new Date().toISOString()
       };
       batch.set(doc(db, 'notifications', prodNotiId), prodNoti);
+
+      // Increment product sales count
+      batch.update(doc(db, 'products', order.produto_id), { salesCount: increment(1) });
+
+      // Grant Digital Access if it was a digital product but not yet granted (unlikely if delivered, but good safety)
+      const productRef = doc(db, 'products', order.produto_id);
+      const productSnap = await getDoc(productRef);
+      if (productSnap.exists() && productSnap.data().tipo === 'DIGITAL' && !order.digital_access_granted) {
+        batch.update(orderRef, { digital_access_granted: true });
+        const accessId = `${order.produto_id}_${order.cliente_id}`;
+        const access: UserDigitalAccess = {
+          id: accessId,
+          user_id: order.cliente_id,
+          product_id: order.produto_id,
+          product_nome: order.produto_nome,
+          product_imageUrl: productSnap.data().imageUrl || '',
+          progress: 0,
+          lastViewedAt: new Date().toISOString(),
+          accessGrantedAt: new Date().toISOString()
+        };
+        batch.set(doc(db, 'digital_access', accessId), access);
+
+        // Notify client
+        const accessNotiId = `noti_digital_access_${orderId}`;
+        batch.set(doc(db, 'notifications', accessNotiId), {
+          id: accessNotiId,
+          user_id: order.cliente_id,
+          title: 'Acesso Digital Liberado!',
+          message: `O seu acesso ao infoproducto "${order.produto_nome}" já está disponível na sua área de Infoprodutos!`,
+          read: false,
+          createdAt: new Date().toISOString()
+        });
+      }
 
       // 2. Pay Affiliate (if exists): comissao_afiliado_paga
       if (order.afiliado_id && order.comissao_afiliado_paga > 0) {
@@ -997,7 +1071,7 @@ export function listenToOrderChats(orderId: string, onUpdate: (chats: ChatSimple
     const chats = snap.docs.map(doc => doc.data() as ChatSimple);
     onUpdate(chats);
   }, (error) => {
-    console.error("Error loading chat messages:", error);
+    handleFirestoreError(error, OperationType.LIST, 'chats');
   });
 }
 
@@ -1016,7 +1090,7 @@ export function listenToUserNotifications(userId: string, onUpdate: (notificatio
     const filtered = allNotifications.filter(n => n.user_id === userId || n.user_id === 'ALL_ADMS');
     onUpdate(filtered.slice(0, 50)); // Max 50
   }, (error) => {
-    console.error("Notifications error", error);
+    handleFirestoreError(error, OperationType.LIST, 'notifications');
   });
 }
 
@@ -1037,17 +1111,41 @@ export async function logoutUser(): Promise<void> {
 }
 
 // -------------------------------------------------------------
-// ADAPTED METHODS FOR BUYER FLOW
+// INFOPRODUCTS & DIGITAL AREA
 // -------------------------------------------------------------
+export async function updateDigitalProgress(accessId: string, progress: number): Promise<void> {
+  const path = `digital_access/${accessId}`;
+  try {
+    await updateDoc(doc(db, 'digital_access', accessId), { 
+      progress,
+      lastViewedAt: new Date().toISOString()
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+}
+
+export async function getUserDigitalAccess(userId: string): Promise<UserDigitalAccess[]> {
+  const path = 'digital_access';
+  try {
+    const q = query(collection(db, 'digital_access'), where('user_id', '==', userId));
+    const snap = await getDocs(q);
+    return snap.docs.map(doc => doc.data() as UserDigitalAccess);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+  }
+}
 export async function createOrder(
   clienteId: string,
   product: Product,
   phone: string,
-  bairro: string,
-  deliveryAddress: string,
+  bairro: string = "",
+  deliveryAddress: string = "",
   discountPercentage: number,
   taxaEntrega: number,
-  afiliadoId?: string
+  afiliadoId?: string,
+  paymentMethod: PaymentMethod = 'COD',
+  paymentChannel?: string
 ): Promise<string> {
   const path = 'orders';
   try {
@@ -1097,36 +1195,47 @@ export async function createOrder(
       comissao_produtor_paga: comissaoProdutorPaga,
       delivery_address: deliveryAddress,
       phone,
+      payment_method: paymentMethod,
+      payment_channel: paymentChannel,
+      digital_access_granted: false,
       createdAt: new Date().toISOString()
     };
 
     const batch = writeBatch(db);
     batch.set(doc(db, 'orders', orderId), order);
 
-    // Notify Producer about sale
+    // Digital products automatically tracked for sales (not yet finalized as paid usually)
+    // For digital we notify about Online Payment request
     const prodNotiId = `noti_sale_prod_${orderId}`;
+    let prodNotiTitle = 'Novo Pedido Recebido (CoD)';
+    let prodNotiMsg = `Recebeu um novo pedido de "${product.nome}" feito por ${clienteNome} para entregar em ${bairro}. Pagamento na Entrega.`;
+
+    if (product.tipo === 'DIGITAL') {
+      prodNotiTitle = 'Nova Venda de Infoproduto';
+      prodNotiMsg = `Recebeu um pedido de infoproduto "${product.nome}" por ${clienteNome}. Aguardando confirmação de pagamento online (${paymentChannel}).`;
+    }
+
     const prodNoti: Notification = {
       id: prodNotiId,
       user_id: product.produtor_id,
-      title: 'Novo Pedido Recebido (CoD)',
-      message: `Recebeu um novo pedido de "${product.nome}" feito por ${clienteNome} para entregar em ${bairro}. Pagamento na Entrega.`,
+      title: prodNotiTitle,
+      message: prodNotiMsg,
       read: false,
       createdAt: new Date().toISOString()
     };
     batch.set(doc(db, 'notifications', prodNotiId), prodNoti);
 
-    // If there is an affiliate, notify them about the potential referral
-    if (afiliadoId && comissaoAfiliadoPaga > 0) {
-      const afilNotiId = `noti_refer_afil_${orderId}`;
-      const afilNoti: Notification = {
-        id: afilNotiId,
-        user_id: afiliadoId,
-        title: 'Nova Indicação Registada!',
-        message: `Uma venda do produto "${product.nome}" foi feita através do seu link. Comissão de ${comissaoAfiliadoPaga.toLocaleString()} Kz pendente de entrega.`,
+    // If online payment and digital, we might want to notify ADM to verify if it's automated
+    if (paymentMethod === 'ONLINE') {
+      const adminNotiId = `noti_online_pay_${orderId}`;
+      batch.set(doc(db, 'notifications', adminNotiId), {
+        id: adminNotiId,
+        user_id: 'ALL_ADMS',
+        title: 'Pagamento Online em Espera',
+        message: `Novo pagamento via ${paymentChannel} para o pedido #${orderId.substring(6,12)}. Confirme para liberar acesso.`,
         read: false,
         createdAt: new Date().toISOString()
-      };
-      batch.set(doc(db, 'notifications', afilNotiId), afilNoti);
+      });
     }
 
     await batch.commit();

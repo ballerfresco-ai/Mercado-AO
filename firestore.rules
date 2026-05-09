@@ -80,14 +80,17 @@ service cloud.firestore {
     // -------------------------------------------------------------
     match /products/{productId} {
       function isValidProduct(data) {
-        return data.keys().hasAll(['id', 'nome', 'descrição', 'preço', 'comissão_afiliado', 'produtor_id', 'status', 'featured', 'createdAt']) &&
+        return data.keys().hasAll(['id', 'nome', 'descrição', 'preço', 'comissão_afiliado', 'produtor_id', 'status', 'featured', 'tipo', 'categoria', 'salesCount', 'createdAt']) &&
                data.id is string && data.id.size() <= 128 &&
                data.nome is string && data.nome.size() <= 150 &&
-               data['descrição'] is string && data['descrição'].size() <= 2000 &&
-               data['preço'] is number && data['preço'] > 0 &&
+               data['descrição'] is string && data['descrição'].size() <= 4000 &&
+               data['preço'] is number && data['preço'] >= 0 &&
                data['comissão_afiliado'] is number && data['comissão_afiliado'] >= 0 && data['comissão_afiliado'] <= 100 &&
                data.produtor_id is string && data.produtor_id.size() <= 128 &&
                data.status in ['pending', 'approved', 'rejected'] &&
+               data.tipo in ['FISICO', 'DIGITAL'] &&
+               data.categoria is string &&
+               data.salesCount is number &&
                data.featured is bool;
       }
 
@@ -121,14 +124,14 @@ service cloud.firestore {
     // -------------------------------------------------------------
     match /orders/{orderId} {
       function isValidOrder(data) {
-        return data.keys().hasAll(['id', 'cliente_id', 'produto_id', 'status', 'bairro', 'taxa_entrega', 'total', 'createdAt']) &&
+        return data.keys().hasAll(['id', 'cliente_id', 'produto_id', 'status', 'taxa_entrega', 'total', 'payment_method', 'createdAt']) &&
                data.id is string && data.id.size() <= 128 &&
                data.cliente_id is string && data.cliente_id.size() <= 128 &&
                data.produto_id is string && data.produto_id.size() <= 128 &&
                data.status in ['pending', 'processing', 'shipped', 'delivered', 'cancelled'] &&
-               data.bairro is string && data.bairro.size() <= 150 &&
                data.taxa_entrega is number && data.taxa_entrega >= 0 &&
-               data.total is number && data.total > 0;
+               data.total is number && data.total > 0 &&
+               data.payment_method in ['COD', 'ONLINE'];
       }
 
       function orderInvolvesUser() {
@@ -248,8 +251,38 @@ service cloud.firestore {
     // COUPONS COLLECTION
     // -------------------------------------------------------------
     match /coupons/{couponId} {
-      allow read: if isSignedIn(); // clients can validate coupons
-      allow write: if isAdmin(); // only admin can manage coupons
+      function isValidCoupon(data) {
+        return data.keys().hasAll(['id', 'código', 'desconto', 'validade']) &&
+               data.id is string && data.id.size() <= 128 &&
+               data['código'] is string && data['código'].size() <= 50 &&
+               data.desconto is number && data.desconto >= 0 && data.desconto <= 100 &&
+               data.validade is string && data.validade.size() <= 20;
+      }
+
+      allow get: if isSignedIn();
+      allow list: if isSignedIn() && (isAdmin() || (resource != null && resource.data.produtor_id == request.auth.uid));
+      allow create: if isSignedIn() && (isAdmin() || (isProducer() && request.resource.data.produtor_id == request.auth.uid)) && isValidCoupon(request.resource.data);
+      allow update: if isSignedIn() && (isAdmin() || (isProducer() && resource.data.produtor_id == request.auth.uid)) && isValidCoupon(request.resource.data);
+      allow delete: if isAdmin() || (isSignedIn() && isProducer() && resource.data.produtor_id == request.auth.uid);
+    }
+
+    // -------------------------------------------------------------
+    // MATERIAL DE APOIO COLLECTION
+    // -------------------------------------------------------------
+    match /material_apoio/{materialId} {
+      function isValidMaterial(data) {
+        return data.keys().hasAll(['id', 'produtor_id', 'titulo', 'descricao', 'tipo', 'createdAt']) &&
+               data.id is string && data.id.size() <= 128 &&
+               data.produtor_id is string && data.produtor_id.size() <= 128 &&
+               data.titulo is string && data.titulo.size() <= 200 &&
+               data.descricao is string && data.descricao.size() <= 1000 &&
+               data.tipo in ['Link', 'Arquivo', 'Texto'];
+      }
+
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isProducer() && request.resource.data.produtor_id == request.auth.uid && isValidMaterial(request.resource.data);
+      allow update: if isSignedIn() && isProducer() && resource.data.produtor_id == request.auth.uid && isValidMaterial(request.resource.data);
+      allow delete: if isAdmin() || (isSignedIn() && isProducer() && resource.data.produtor_id == request.auth.uid);
     }
 
     // -------------------------------------------------------------
@@ -280,6 +313,16 @@ service cloud.firestore {
                     request.resource.data.message == resource.data.message &&
                     request.resource.data.createdAt == resource.data.createdAt;
       allow delete: if isSignedIn() && resource != null && resource.data.user_id == request.auth.uid;
+    }
+
+    // -------------------------------------------------------------
+    // DIGITAL ACCESS COLLECTION
+    // -------------------------------------------------------------
+    match /digital_access/{accessId} {
+      allow read: if isSignedIn() && (isAdmin() || (resource != null && resource.data.user_id == request.auth.uid));
+      allow create: if isAdmin(); // Only system/admin grants access
+      allow update: if (isSignedIn() && resource != null && resource.data.user_id == request.auth.uid) || isAdmin();
+      allow delete: if isAdmin();
     }
   }
 }

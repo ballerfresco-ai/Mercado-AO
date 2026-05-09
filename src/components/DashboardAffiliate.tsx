@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { 
   db, 
   getWallet, 
-  requestWithdrawal 
+  requestWithdrawal,
+  handleFirestoreError,
+  OperationType 
 } from '../firebase';
 import { generateSocialPromoCopy } from '../services/gemini';
 import { 
@@ -76,6 +78,8 @@ export function DashboardAffiliate({ userId, userProfile }: DashboardAffiliatePr
     const qProds = query(collection(db, 'products'), where('status', '==', 'approved'));
     const unsubProds = onSnapshot(qProds, (snap) => {
       setProducts(snap.docs.map(d => d.data() as Product));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'products');
     });
 
     // 2. Affiliate's personal wallet
@@ -84,24 +88,32 @@ export function DashboardAffiliate({ userId, userProfile }: DashboardAffiliatePr
       if (match) {
         setWallet(match.data() as Wallet);
       }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'wallets');
     });
 
     // 3. Affiliate's withdrawals list
     const qWiths = query(collection(db, 'withdrawals'), where('user_id', '==', userId));
     const unsubWiths = onSnapshot(qWiths, (snap) => {
       setWithdrawals(snap.docs.map(d => d.data() as Withdrawal));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'withdrawals');
     });
 
     // 4. Affiliate's orders (sales made by them)
     const qOrders = query(collection(db, 'orders'), where('afiliado_id', '==', userId));
     const unsubOrders = onSnapshot(qOrders, (snap) => {
       setMyOrders(snap.docs.map(d => d.data() as Order));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'orders');
     });
 
     // 5. Materials (all available materials since any affiliate can promote any product)
     const qMats = query(collection(db, 'material_apoio'));
     const unsubMats = onSnapshot(qMats, (snap) => {
       setMaterials(snap.docs.map(d => d.data() as MaterialApoio));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'material_apoio');
     });
 
     // 6. Ranking of Affiliates (just fetch all affiliates to calculate rank)
