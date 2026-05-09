@@ -40,13 +40,19 @@ const firebaseConfig = {
   firestoreDatabaseId: (import.meta.env.VITE_FIREBASE_DATABASE_ID as string) || '(default)'
 };
 
+// Error logging for missing environment variables
+if (!firebaseConfig.apiKey && !firebaseConfigLocal.apiKey) {
+  console.error("ERRO CRÍTICO: Chave de API do Firebase (VITE_FIREBASE_API_KEY) não encontrada nas variáveis de ambiente!");
+}
+
 // Only try to use the local config if environment variables are missing
 if (!firebaseConfig.apiKey) {
   try {
     // We use a conditional check and fallback to avoid crashing the build
     // @ts-ignore
     const localConfig = firebaseConfigLocal;
-    if (localConfig) {
+    if (localConfig && localConfig.apiKey) {
+      console.log("Firebase: Usando configuração local do AI Studio.");
       firebaseConfig.apiKey = localConfig.apiKey;
       firebaseConfig.authDomain = localConfig.authDomain;
       firebaseConfig.projectId = localConfig.projectId;
@@ -56,9 +62,12 @@ if (!firebaseConfig.apiKey) {
       firebaseConfig.firestoreDatabaseId = localConfig.firestoreDatabaseId || '(default)';
     }
   } catch (e) {
-    console.warn("Firebase configuration missing. Please check environment variables.");
+    console.warn("Firebase configuration missing. Please check environment variables on Vercel/Netlify.");
   }
 }
+
+// Final safety check before initialization to prevent white screen
+const isConfigValid = !!firebaseConfig.apiKey && !!firebaseConfig.projectId;
 
 import { 
   UserProfile, 
@@ -77,7 +86,11 @@ import {
   WithdrawalMethod
 } from './types';
 
-// Initialize Firebase
+// Initialize Firebase only if valid
+if (!isConfigValid) {
+  console.error("Firebase config is invalid. Check your environment variables.");
+}
+
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);

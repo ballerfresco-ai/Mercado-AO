@@ -1,19 +1,26 @@
 import { GoogleGenAI } from "@google/genai";
 
-// Standard initialization per guidelines
-// In AI Studio, GEMINI_API_KEY is injected into process.env.
-// In external deploys (Vercel/Netlify), we should use VITE_GEMINI_API_KEY.
-const apiKey = (import.meta.env.VITE_GEMINI_API_KEY as string) || (process.env.GEMINI_API_KEY as string);
-const ai = new GoogleGenAI({ apiKey });
-
-// Using recommended model 'gemini-3-flash-preview' for text-only assistant
+// Lazy initialization of Gemini client to prevent crashes if API key is missing on startup
+let genAI: GoogleGenAI | null = null;
 const MODEL_NAME = 'gemini-3-flash-preview';
+
+function getAI() {
+  if (!genAI) {
+    const apiKey = (import.meta.env.VITE_GEMINI_API_KEY as string) || (process.env.GEMINI_API_KEY as string);
+    if (!apiKey || apiKey === "MY_GEMINI_API_KEY") {
+      throw new Error("Chave Gemini API não configurada. Adicione VITE_GEMINI_API_KEY nas variáveis de ambiente.");
+    }
+    genAI = new GoogleGenAI(apiKey);
+  }
+  return genAI;
+}
 
 /**
  * Generates an elegant, high-converting product description tailored for the Angolan market.
  */
 export async function generateProductDescription(productName: string, bulletPoints: string): Promise<string> {
   try {
+    const ai = getAI();
     const prompt = `Você é um copywriter profissional angolano especializado em e-commerce. 
 Gerou uma descrição cativante, estruturada e de alta conversão para o produto abaixo na moeda local de Angola (Kwanza - Kz).
 Use termos amigáveis populares em Luanda e no resto de Angola (como "madié", "bué", "fixe", "expresso") mas de forma corporativa e polida. Enfatize que o Mercado AO suporta "Cash on Delivery" (pagamento seguro apenas no momento da entrega física ao cliente).
@@ -27,12 +34,9 @@ A descrição deve ter:
 3. Um convite de ação destacando o pagamento na entrega (Cash on Delivery).
 Escreva em Português de Angola. Evite formatação pesada, prefira markdown simples.`;
 
-    const response = await ai.models.generateContent({
-      model: MODEL_NAME,
-      contents: prompt,
-    });
-
-    return response.text || "Não foi possível gerar a descrição no momento.";
+    const model = ai.getGenerativeModel({ model: MODEL_NAME });
+    const result = await model.generateContent(prompt);
+    return result.response.text() || "Não foi possível gerar a descrição no momento.";
   } catch (error) {
     console.error("Gemini description error:", error);
     return "Erro ao comunicar com a inteligência artificial para gerar descrição do produto.";
@@ -48,6 +52,7 @@ export async function generateSocialPromoCopy(
   affiliateLink: string
 ): Promise<string> {
   try {
+    const ai = getAI();
     const prompt = `Você é um afiliado digital de alto sucesso em Angola. Escreva um post de divulgação fantástico e curto para o WhatsApp e Instagram sobre este produto.
 Encoraje as pessoas a comprarem clicando no link indicado e mencione que pagam apenas no ato de entrega física (Cash on Delivery) via dinherio, IBAN ou Multicaixa Express.
 
@@ -57,12 +62,9 @@ Link de Afiliado: ${affiliateLink}
 
 Use emojis atraentes, quebras de linhas limpas e uma linguagem vibrante, típica do marketing moderno em Angola.`;
 
-    const response = await ai.models.generateContent({
-      model: MODEL_NAME,
-      contents: prompt,
-    });
-
-    return response.text || "";
+    const model = ai.getGenerativeModel({ model: MODEL_NAME });
+    const result = await model.generateContent(prompt);
+    return result.response.text() || "";
   } catch (error) {
     console.error("Gemini promo copy error:", error);
     return `🔥 Super novidade no Mercado AO!\n📦 Compre *${productName}* por apenas *${price.toLocaleString()} Kz*.\n👉 Pagamento 100% seguro apenas no ato de entrega!\n🔗 Garanta o seu aqui: ${affiliateLink}`;
@@ -80,6 +82,7 @@ export async function simulateUserChatReply(
   lastMessagesContext: string[]
 ): Promise<string> {
   try {
+    const ai = getAI();
     const contextStr = lastMessagesContext.join("\n");
     const roleAs = senderType === 'Cliente' ? 'Vendedor/Produtor' : 'Cliente/Comprador';
     
@@ -95,12 +98,9 @@ ${contextStr}
 
 Por favor, gere APENAS a próxima mensagem direta curta que o ${roleAs} responderia neste chat. Sem introduções vazias do tipo "Vendedor diz:".`;
 
-    const response = await ai.models.generateContent({
-      model: MODEL_NAME,
-      contents: prompt,
-    });
-
-    return response.text?.trim() || "Estou a verificar esta questão agora mesmo, estamos juntos!";
+    const model = ai.getGenerativeModel({ model: MODEL_NAME });
+    const result = await model.generateContent(prompt);
+    return result.response.text().trim() || "Estou a verificar esta questão agora mesmo, estamos juntos!";
   } catch (error) {
     console.error("Gemini chat simulation error:", error);
     return senderType === 'Cliente' ? "Olá, sim! Vou preparar a sua encomenda imediatamente e mantê-lo informado sobre a entrega do motoboy." : "Agradeço! Estarei atento ao telemóvel para receber o produto.";
