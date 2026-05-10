@@ -70,15 +70,22 @@ service cloud.firestore {
                data.salesCount is number &&
                data.featured is bool &&
                // Optional multi-image support
+               (!data.keys().contains('imageUrl') || data.imageUrl is string) &&
                (!data.keys().contains('images') || data.images is list) &&
-               // Physical details (optional in schema but enforced in UI)
+               // Physical details
                (!data.keys().contains('subcategoria') || data.subcategoria is string) &&
                (!data.keys().contains('estado') || data.estado is string) &&
                (!data.keys().contains('peso') || data.peso is string) &&
                (!data.keys().contains('tamanho') || data.tamanho is string) &&
                (!data.keys().contains('cor') || data.cor is string) &&
                (!data.keys().contains('endereco_recolha') || data.endereco_recolha is string) &&
-               (!data.keys().contains('contacto_produtor') || data.contacto_produtor is string);
+               (!data.keys().contains('contacto_produtor') || data.contacto_produtor is string) &&
+               // Digital details
+               (!data.keys().contains('videoUrl') || data.videoUrl is string) &&
+               (!data.keys().contains('fileUrl') || data.fileUrl is string) &&
+               (!data.keys().contains('fileName') || data.fileName is string) &&
+               (!data.keys().contains('externalLink') || data.externalLink is string) &&
+               (!data.keys().contains('digitalContent') || data.digitalContent is string);
       }
 
       allow get: if isSignedIn();
@@ -242,7 +249,13 @@ service cloud.firestore {
     match /digital_access/{accessId} {
       allow get: if isSignedIn() && (resource.data.user_id == request.auth.uid || isAdmin());
       allow list: if isSignedIn() && (resource.data.user_id == request.auth.uid || isAdmin());
-      allow create: if isAdmin();
+      allow create: if isSignedIn() && (
+                      isAdmin() || 
+                      (
+                        isProducer() && 
+                        get(/databases/$(database)/documents/products/$(request.resource.data.product_id)).data.produtor_id == request.auth.uid
+                      )
+                    );
       allow update: if isSignedIn() && (resource.data.user_id == request.auth.uid || isAdmin());
       allow delete: if isAdmin();
     }

@@ -40,6 +40,7 @@ import {
   LayoutGrid,
   FileSpreadsheet,
   AlertCircle,
+  FileCheck,
   Upload,
   Image as ImageIcon,
   Trash2,
@@ -48,7 +49,9 @@ import {
   FileText,
   Trophy,
   Wallet as WalletIcon,
-  ExternalLink
+  ExternalLink,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { motion } from 'motion/react';
 
@@ -599,17 +602,21 @@ export function DashboardProducer({ userId, userProfile, onOpenChat }: Dashboard
                       </div>
 
                       {prod.imageUrl && (
-                        <div className="w-full h-32 rounded-xl overflow-hidden bg-slate-900 border border-white/5 relative">
+                        <div className="w-full h-32 rounded-xl overflow-hidden bg-slate-900 border border-white/5 relative group">
                           <img 
                             src={prod.imageUrl} 
                             alt={prod.nome} 
                             className="w-full h-full object-cover" 
                             referrerPolicy="no-referrer"
                             onError={(e) => {
-                              // If image loading fails, fall back to blank spacer
                               (e.target as any).style.display = 'none';
                             }}
                           />
+                          {prod.images && prod.images.length > 1 && (
+                            <div className="absolute bottom-2 right-2 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded text-[8px] text-white font-mono">
+                              +{prod.images.length - 1} fotos
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -1108,19 +1115,34 @@ export function DashboardProducer({ userId, userProfile, onOpenChat }: Dashboard
                         />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[9px] uppercase text-slate-500 font-bold">Ficheiro Digital (Upload)</label>
-                        <div className="relative">
-                           <button 
-                            type="button" 
-                            className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-slate-400 flex items-center justify-center gap-2 hover:bg-slate-900 transition-colors"
-                           >
-                             {isUploadingFile ? <span className="animate-spin w-3 h-3 border-2 border-white/20 border-t-white rounded-full"></span> : <Upload className="w-3 h-3 text-purple-400" />}
-                             <span className="truncate">{fileUrl ? fileName : "Fazer upload arquivo"}</span>
-                           </button>
+                        <label className="text-[9px] uppercase text-slate-500 font-bold">Ficheiro Digital (Protegido)</label>
+                        <div className={`relative rounded-xl border border-dashed transition-all p-3 flex items-center gap-3 ${
+                          fileUrl ? 'bg-emerald-500/5 border-emerald-500/30' : 'bg-slate-950 border-white/5 hover:border-white/10'
+                        }`}>
+                           <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
+                             fileUrl ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-900 text-slate-500'
+                           }`}>
+                             {isUploadingFile ? <span className="animate-spin w-4 h-4 border-2 border-white/20 border-t-white rounded-full"></span> : (fileUrl ? <FileCheck className="w-5 h-5" /> : <Upload className="w-5 h-5" />)}
+                           </div>
+                           <div className="flex-1 min-w-0">
+                              <p className={`text-xs font-bold truncate ${fileUrl ? 'text-emerald-400' : 'text-slate-400'}`}>
+                                {fileUrl ? fileName : "Upload do ficheiro (.pdf, .zip, .mp4)"}
+                              </p>
+                              <p className="text-[9px] text-slate-500">Este arquivo será libertado após compra aprovada.</p>
+                           </div>
+                           {fileUrl && (
+                             <button 
+                                type="button" 
+                                onClick={() => {setFileUrl(''); setFileName('');}}
+                                className="text-red-500 p-1 hover:bg-red-500/10 rounded"
+                             >
+                               <X className="w-4 h-4" />
+                             </button>
+                           )}
                            <input 
                             type="file" 
                             onChange={handleFileUpload}
-                            className="absolute inset-0 opacity-0 cursor-pointer"
+                            className={`absolute inset-0 opacity-0 cursor-pointer ${fileUrl ? 'pointer-events-none' : ''}`}
                             disabled={isUploadingFile}
                            />
                         </div>

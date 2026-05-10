@@ -31,6 +31,7 @@ import {
   Clock,
   Heart,
   ChevronRight,
+  ChevronLeft,
   Sparkles,
   Flame,
   Truck,
@@ -74,6 +75,7 @@ export function MarketplaceClient({ userId, onOpenChat }: MarketplaceClientProps
 
   // Checkout states
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [currentImageIdx, setCurrentImageIdx] = useState(0);
   const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
   const [bairroSelection, setBairroSelection] = useState<string>('');
   const [deliveryFeeValue, setDeliveryFeeValue] = useState<number>(0);
@@ -97,6 +99,12 @@ export function MarketplaceClient({ userId, onOpenChat }: MarketplaceClientProps
 
   // Auto-detect referral link
   const detectedReferralUserId = useUserReferral();
+
+  useEffect(() => {
+    if (selectedProduct) {
+      setCurrentImageIdx(0);
+    }
+  }, [selectedProduct]);
 
   useEffect(() => {
     // 1. Fetch only approved products
@@ -554,7 +562,61 @@ export function MarketplaceClient({ userId, onOpenChat }: MarketplaceClientProps
                 </button>
               </div>
 
-              {selectedProduct.imageUrl && (
+              {selectedProduct.images && selectedProduct.images.length > 0 ? (
+                <div className="space-y-2">
+                   <div className="w-full h-56 rounded-2xl overflow-hidden bg-slate-900 border border-white/5 relative group">
+                      <img 
+                        src={selectedProduct.images[currentImageIdx] || selectedProduct.imageUrl} 
+                        alt={selectedProduct.nome} 
+                        className="w-full h-full object-cover transition-all duration-300" 
+                        referrerPolicy="no-referrer"
+                      />
+                      {selectedProduct.images.length > 1 && (
+                        <>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCurrentImageIdx(prev => prev > 0 ? prev - 1 : selectedProduct.images!.length - 1);
+                            }}
+                            className="absolute left-2 top-1/2 -translate-y-1/2 p-2 bg-black/50 backdrop-blur-md rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <ChevronLeft className="w-4 h-4" />
+                          </button>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCurrentImageIdx(prev => prev < selectedProduct.images!.length - 1 ? prev + 1 : 0);
+                            }}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-black/50 backdrop-blur-md rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <ChevronRight className="w-4 h-4" />
+                          </button>
+                          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 p-1 px-2 bg-black/30 backdrop-blur-xl rounded-full">
+                            {selectedProduct.images.map((_, dotIdx) => (
+                              <div 
+                                key={dotIdx} 
+                                className={`w-1.5 h-1.5 rounded-full transition-all ${dotIdx === currentImageIdx ? 'bg-blue-500 w-4' : 'bg-white/30'}`}
+                              />
+                            ))}
+                          </div>
+                        </>
+                      )}
+                   </div>
+                   {selectedProduct.images.length > 1 && (
+                     <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none">
+                        {selectedProduct.images.map((url, sIdx) => (
+                          <div 
+                            key={sIdx} 
+                            onClick={() => setCurrentImageIdx(sIdx)}
+                            className={`w-14 h-14 rounded-xl overflow-hidden border-2 shrink-0 cursor-pointer transition-all ${sIdx === currentImageIdx ? 'border-blue-500 scale-95' : 'border-white/5 opacity-60 hover:opacity-100'}`}
+                          >
+                            <img src={url} className="w-full h-full object-cover" />
+                          </div>
+                        ))}
+                     </div>
+                   )}
+                </div>
+              ) : selectedProduct.imageUrl && (
                 <div className="w-full h-48 rounded-2xl overflow-hidden bg-slate-900 border border-white/5 relative">
                   <img 
                     src={selectedProduct.imageUrl} 
@@ -565,11 +627,55 @@ export function MarketplaceClient({ userId, onOpenChat }: MarketplaceClientProps
                 </div>
               )}
 
+              {/* Enhanced Info Grid */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                 <div className="bg-slate-900/40 p-3 rounded-xl border border-white/5 space-y-0.5">
+                    <span className="text-[8px] text-slate-500 uppercase font-mono">Tipo</span>
+                    <div className="text-[10px] font-bold text-white flex items-center gap-1">
+                       {selectedProduct.tipo === 'DIGITAL' ? <Sparkles className="w-3 h-3 text-purple-400" /> : <ShoppingBagIcon className="w-3 h-3 text-blue-400" />}
+                       {selectedProduct.tipo}
+                    </div>
+                 </div>
+                 <div className="bg-slate-900/40 p-3 rounded-xl border border-white/5 space-y-0.5">
+                    <span className="text-[8px] text-slate-500 uppercase font-mono">Vendas</span>
+                    <div className="text-[10px] font-bold text-white">{selectedProduct.salesCount} Unidades</div>
+                 </div>
+                 {selectedProduct.tipo === 'FISICO' && selectedProduct.estado && (
+                   <div className="bg-slate-900/40 p-3 rounded-xl border border-white/5 space-y-0.5">
+                      <span className="text-[8px] text-slate-500 uppercase font-mono">Estado</span>
+                      <div className="text-[10px] font-bold text-emerald-400">{selectedProduct.estado}</div>
+                   </div>
+                 )}
+                 {selectedProduct.tipo === 'FISICO' && selectedProduct.peso && (
+                   <div className="bg-slate-900/40 p-3 rounded-xl border border-white/5 space-y-0.5">
+                      <span className="text-[8px] text-slate-500 uppercase font-mono">Peso</span>
+                      <div className="text-[10px] font-bold text-white">{selectedProduct.peso}</div>
+                   </div>
+                 )}
+              </div>
+
               <div className="space-y-2">
                 <h4 className="text-xs font-mono uppercase text-slate-400 tracking-wide">Descrição Exclusiva do Produtor</h4>
                 <div className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap italic">
                   "{selectedProduct.descrição}"
                 </div>
+
+                {selectedProduct.tipo === 'FISICO' && (selectedProduct.tamanho || selectedProduct.cor) && (
+                   <div className="flex gap-4 pt-2">
+                      {selectedProduct.tamanho && (
+                        <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                           <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                           <span>Tamanho: <strong className="text-white">{selectedProduct.tamanho}</strong></span>
+                        </div>
+                      )}
+                      {selectedProduct.cor && (
+                        <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                           <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                           <span>Cor: <strong className="text-white">{selectedProduct.cor}</strong></span>
+                        </div>
+                      )}
+                   </div>
+                )}
               </div>
 
               {/* Price Tag info */}
@@ -849,7 +955,7 @@ export function MarketplaceClient({ userId, onOpenChat }: MarketplaceClientProps
                   type="submit"
                   disabled={orderProcessing}
                   className={`w-full py-3 text-white font-mono font-bold text-xs rounded-xl transition-all shadow-lg flex items-center justify-center gap-1.5 ${
-                    selectedProduct.status === 'DIGITAL' 
+                    selectedProduct.tipo === 'DIGITAL' 
                       ? 'bg-gradient-to-r from-purple-700 to-purple-600 hover:shadow-purple-500/25' 
                       : 'bg-gradient-to-r from-blue-700 to-blue-600 hover:shadow-blue-500/25'
                   }`}
@@ -915,6 +1021,22 @@ export function MarketplaceClient({ userId, onOpenChat }: MarketplaceClientProps
   );
 
   function MyDigitalProducts() {
+    const [accessProductDetails, setAccessProductDetails] = useState<Product | null>(null);
+
+    useEffect(() => {
+      if (selectedAccess) {
+        const prod = products.find(p => p.id === selectedAccess.product_id);
+        if (prod) {
+          setAccessProductDetails(prod);
+        } else {
+          // If not in standard list (which filtered by approved), we might need to fetch it
+          // but since they have access, it should be fetching fine or we can assume it's there
+        }
+      } else {
+        setAccessProductDetails(null);
+      }
+    }, [selectedAccess, products]);
+
     return (
       <div className="space-y-8 animate-in fade-in slide-in-from-bottom-5 duration-500">
         <div className="bg-[#0B0F19] p-8 rounded-3xl border border-white/10 relative overflow-hidden">
@@ -1007,45 +1129,75 @@ export function MarketplaceClient({ userId, onOpenChat }: MarketplaceClientProps
 
                 <div className="flex-1 overflow-y-auto p-8 flex flex-col items-center justify-center space-y-6">
                    <div className="w-full max-w-2xl aspect-video bg-black rounded-3xl border border-white/10 flex flex-col items-center justify-center gap-4 relative overflow-hidden">
-                      <Sparkles className="absolute top-10 right-10 w-32 h-32 text-blue-500/5 animate-pulse" />
-                      <PlayCircle className="w-16 h-16 text-blue-500 animate-pulse" />
-                      <div className="text-center z-10">
-                        <p className="text-white font-bold">Vídeo Aula em Preparação...</p>
-                        <p className="text-xs text-slate-500">O streaming seguro está a ser otimizado para a sua ligação em Angola.</p>
-                      </div>
+                      {accessProductDetails?.videoUrl ? (
+                         <div className="absolute inset-0">
+                           <iframe 
+                             src={accessProductDetails.videoUrl.replace('watch?v=', 'embed/')} 
+                             className="w-full h-full"
+                             allowFullScreen
+                           />
+                         </div>
+                      ) : (
+                        <>
+                          <Sparkles className="absolute top-10 right-10 w-32 h-32 text-blue-500/5 animate-pulse" />
+                          <PlayCircle className="w-16 h-16 text-blue-500 animate-pulse" />
+                          <div className="text-center z-10">
+                            <p className="text-white font-bold">Conteúdo em Video indisponível</p>
+                            <p className="text-xs text-slate-500">Verifique os links abaixo para aceder ao material do produtor.</p>
+                          </div>
+                        </>
+                      )}
                    </div>
+
+                   {accessProductDetails?.digitalContent && (
+                      <div className="w-full max-w-2xl bg-blue-500/10 border border-blue-500/20 p-5 rounded-2xl">
+                         <h5 className="text-[10px] text-blue-400 font-bold uppercase tracking-widest mb-2">Mensagem do Produtor / Chave de Acesso</h5>
+                         <p className="text-sm text-slate-200 whitespace-pre-wrap">{accessProductDetails.digitalContent}</p>
+                      </div>
+                   )}
 
                    <div className="w-full max-w-2xl grid grid-cols-1 md:grid-cols-2 gap-4">
                      <div className="bg-slate-900/40 p-5 rounded-2xl border border-white/5 space-y-3">
                         <h5 className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ">Ficheiros para Download</h5>
                         <div className="space-y-2">
-                           <div className="flex items-center justify-between p-2 bg-slate-950 rounded-lg border border-white/5">
-                              <div className="flex items-center gap-2">
-                                <FileText className="w-4 h-4 text-purple-400" />
-                                <span className="text-[10px] text-slate-300">Guia de Implementação .pdf</span>
-                              </div>
-                              <Download className="w-3.5 h-3.5 text-slate-500 hover:text-white cursor-pointer" />
-                           </div>
-                           <div className="flex items-center justify-between p-2 bg-slate-950 rounded-lg border border-white/5">
-                              <div className="flex items-center gap-2">
-                                <Tag className="w-4 h-4 text-blue-400" />
-                                <span className="text-[10px] text-slate-300">Templates Exclusivos .zip</span>
-                              </div>
-                              <Download className="w-3.5 h-3.5 text-slate-500 hover:text-white cursor-pointer" />
-                           </div>
+                           {accessProductDetails?.fileUrl ? (
+                             <a 
+                               href={accessProductDetails.fileUrl} 
+                               target="_blank" 
+                               rel="noopener noreferrer"
+                               className="flex items-center justify-between p-2 bg-slate-950 rounded-lg border border-white/5 hover:border-blue-500/30 transition-all cursor-pointer"
+                             >
+                                <div className="flex items-center gap-2">
+                                  <FileText className="w-4 h-4 text-purple-400" />
+                                  <span className="text-[10px] text-slate-300 truncate max-w-[150px]">{accessProductDetails.fileName || 'Download do Produto'}</span>
+                                </div>
+                                <Download className="w-3.5 h-3.5 text-slate-500" />
+                             </a>
+                           ) : (
+                             <p className="text-[10px] text-slate-600 italic">Nenhum ficheiro anexado.</p>
+                           )}
                         </div>
                      </div>
 
                      <div className="bg-slate-900/40 p-5 rounded-2xl border border-white/5 space-y-3">
                         <h5 className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ">Links e Acessos Externos</h5>
                         <div className="space-y-2">
-                           <div className="flex items-center justify-between p-2 bg-slate-950 rounded-lg border border-white/5">
-                              <div className="flex items-center gap-2">
-                                <Globe className="w-4 h-4 text-emerald-400" />
-                                <span className="text-[10px] text-slate-300">Grupo VIP no Telegram</span>
-                              </div>
-                              <LinkIcon className="w-3.5 h-3.5 text-slate-500 hover:text-white cursor-pointer" />
-                           </div>
+                           {accessProductDetails?.externalLink ? (
+                             <a 
+                               href={accessProductDetails.externalLink}
+                               target="_blank"
+                               rel="noopener noreferrer"
+                               className="flex items-center justify-between p-2 bg-slate-950 rounded-lg border border-white/5 hover:border-blue-500/30 transition-all cursor-pointer"
+                             >
+                                <div className="flex items-center gap-2">
+                                  <Globe className="w-4 h-4 text-emerald-400" />
+                                  <span className="text-[10px] text-slate-300">Acesso via Link Externo</span>
+                                </div>
+                                <LinkIcon className="w-3.5 h-3.5 text-slate-500" />
+                             </a>
+                           ) : (
+                             <p className="text-[10px] text-slate-600 italic">Nenhum link externo configurado.</p>
+                           )}
                         </div>
                      </div>
                    </div>
