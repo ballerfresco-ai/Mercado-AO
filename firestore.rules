@@ -165,6 +165,14 @@ service cloud.firestore {
     }
 
     // -------------------------------------------------------------
+    // BAIRROS COLLECTION
+    // -------------------------------------------------------------
+    match /bairros/{bairroId} {
+      allow read: if isSignedIn(); // anyone signed in can see available neighborhoods
+      allow write: if isAdmin(); // only admin can manage custom neighborhoods
+    }
+
+    // -------------------------------------------------------------
     // REVIEWS COLLECTION
     // -------------------------------------------------------------
     match /reviews/{reviewId} {

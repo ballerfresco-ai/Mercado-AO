@@ -40,6 +40,9 @@ export interface Product {
   fileName?: string;
   externalLink?: string;
   digitalContent?: string; // private instructions or access key
+  pixelId?: string; // Facebook/Google Pixel tracking ID
+  orderBumpProductId?: string; // ID of a product to offer at checkout
+  upsellProductId?: string; // ID of a product to offer after purchase
   salesCount: number;
   rejectionReason?: string;
   createdAt: string;

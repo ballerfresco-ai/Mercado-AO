@@ -42,6 +42,9 @@
         "fileName": { "type": "string" },
         "externalLink": { "type": "string" },
         "digitalContent": { "type": "string" },
+        "pixelId": { "type": "string", "description": "Tracking pixel/script ID" },
+        "orderBumpProductId": { "type": "string", "description": "Target product ID for order bump" },
+        "upsellProductId": { "type": "string", "description": "Target product ID for post-purchase upsell" },
         "salesCount": { "type": "number" },
         "rejectionReason": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" }
@@ -197,7 +200,7 @@
         "accessGrantedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "user_id", "product_id", "progress", "accessGrantedAt"]
-    }
+    },
     "Location": {
       "title": "Bairro",
       "description": "Represents a neighborhood in Luanda for delivery selection.",

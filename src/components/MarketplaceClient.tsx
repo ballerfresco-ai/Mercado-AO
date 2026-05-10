@@ -23,6 +23,7 @@ import {
   Tag, 
   Star, 
   Check, 
+  Plus,
   MessageSquare, 
   X, 
   AlertCircle, 
@@ -97,6 +98,9 @@ export function MarketplaceClient({ userId, onOpenChat }: MarketplaceClientProps
   const [orderProcessing, setOrderProcessing] = useState(false);
   const [orderSuccessRef, setOrderSuccessRef] = useState<string | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [orderBumpSelected, setOrderBumpSelected] = useState(false);
+  const [showUpsell, setShowUpsell] = useState(false);
+  const [upsellProduct, setUpsellProduct] = useState<Product | null>(null);
 
   // Auto-detect referral link
   const detectedReferralUserId = useUserReferral();
@@ -104,6 +108,12 @@ export function MarketplaceClient({ userId, onOpenChat }: MarketplaceClientProps
   useEffect(() => {
     if (selectedProduct) {
       setCurrentImageIdx(0);
+      setOrderBumpSelected(false);
+      
+      // Tracking: ViewContent item
+      if (selectedProduct.pixelId) {
+        console.log(`[Pixel ${selectedProduct.pixelId}] ViewContent:`, { name: selectedProduct.nome, value: selectedProduct.preço });
+      }
     }
   }, [selectedProduct]);
 
@@ -212,6 +222,12 @@ export function MarketplaceClient({ userId, onOpenChat }: MarketplaceClientProps
     const discountPercentage = appliedCoupon ? appliedCoupon.desconto : 0;
     
     try {
+      // If order bump is selected, we create two orders or one combined. 
+      // Simplified: Just create the main order. Or if we want to be fancy, we can add the bump.
+      
+      const priceValue = selectedProduct.preço;
+      const discountVal = appliedCoupon ? (priceValue * appliedCoupon.desconto / 100) : 0;
+      
       const orderId = await createOrder(
         userId,
         selectedProduct,
@@ -224,6 +240,38 @@ export function MarketplaceClient({ userId, onOpenChat }: MarketplaceClientProps
         selectedProduct.tipo === 'DIGITAL' ? 'ONLINE' : 'COD',
         selectedProduct.tipo === 'DIGITAL' ? onlineChannel : undefined
       );
+
+      // Tracking: Purchase item
+      if (selectedProduct.pixelId) {
+        console.log(`[Pixel ${selectedProduct.pixelId}] Purchase:`, { name: selectedProduct.nome, value: selectedProduct.preço });
+      }
+
+      if (orderBumpSelected && selectedProduct.orderBumpProductId) {
+        const bumpProd = products.find(p => p.id === selectedProduct.orderBumpProductId);
+        if (bumpProd) {
+          await createOrder(
+            userId,
+            bumpProd,
+            clientPhone,
+            bumpProd.tipo === 'FISICO' ? bairroSelection : "",
+            bumpProd.tipo === 'FISICO' ? moreAddress : "",
+            0, // No coupon for bump usually
+            0, // Delivery already covered by main product usually
+            detectedReferralUserId || undefined,
+            bumpProd.tipo === 'DIGITAL' ? 'ONLINE' : 'COD',
+            bumpProd.tipo === 'DIGITAL' ? onlineChannel : undefined
+          );
+        }
+      }
+
+      // Check for Upsell
+      if (selectedProduct.upsellProductId) {
+        const upsell = products.find(p => p.id === selectedProduct.upsellProductId);
+        if (upsell) {
+           setUpsellProduct(upsell);
+           setShowUpsell(true);
+        }
+      }
 
       setOrderSuccessRef(orderId);
       setCheckoutModalOpen(false);
@@ -884,6 +932,45 @@ export function MarketplaceClient({ userId, onOpenChat }: MarketplaceClientProps
                   </>
                 )}
 
+                {/* Order Bump Section */}
+                {selectedProduct.orderBumpProductId && products.find(p => p.id === selectedProduct.orderBumpProductId) && (
+                  <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-2xl space-y-3 relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 p-1 px-2 bg-blue-500 text-[8px] font-bold rounded-bl-lg">OFERTA ÚNICA</div>
+                    <div className="flex gap-3">
+                      <div className="w-16 h-16 rounded-xl overflow-hidden shrink-0 border border-white/10">
+                        <img 
+                          src={products.find(p => p.id === selectedProduct.orderBumpProductId)?.imageUrl} 
+                          className="w-full h-full object-cover" 
+                          alt="Order Bump" 
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <h4 className="text-[10px] font-black text-white uppercase leading-none">
+                          {products.find(p => p.id === selectedProduct.orderBumpProductId)?.nome}
+                        </h4>
+                        <p className="text-[9px] text-slate-400 line-clamp-2 italic">
+                          Aproveite esta oportunidade e adicione este item ao seu pedido agora mesmo!
+                        </p>
+                        <div className="text-xs font-bold text-blue-400">
+                          +{products.find(p => p.id === selectedProduct.orderBumpProductId)?.preço.toLocaleString()} Kz
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setOrderBumpSelected(!orderBumpSelected)}
+                      className={`w-full py-2.5 rounded-xl border font-bold text-[10px] transition-all flex items-center justify-center gap-2 ${
+                        orderBumpSelected 
+                          ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-600/20' 
+                          : 'bg-slate-900 border-white/5 text-slate-400 hover:border-white/10'
+                      }`}
+                    >
+                      {orderBumpSelected ? <Check className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
+                      {orderBumpSelected ? 'ADICIONADO AO PEDIDO' : 'SIM, ADICIONAR AO MEU PEDIDO'}
+                    </button>
+                  </div>
+                )}
+
                 {/* 3. Telephone */}
                 <div className="space-y-1">
                   <label className="text-xs font-mono uppercase text-slate-400 block">Telemóvel para Contacto / WhatsApp</label>
@@ -950,7 +1037,11 @@ export function MarketplaceClient({ userId, onOpenChat }: MarketplaceClientProps
                   {(() => {
                     const priceValue = selectedProduct.preço;
                     const discountVal = appliedCoupon ? (priceValue * appliedCoupon.desconto / 100) : 0;
-                    const computedTotal = (priceValue - discountVal) + (selectedProduct.tipo === 'FISICO' ? deliveryFeeValue : 0);
+                    
+                    const bumpProd = (orderBumpSelected && selectedProduct.orderBumpProductId) ? products.find(p => p.id === selectedProduct.orderBumpProductId) : null;
+                    const bumpPrice = bumpProd ? bumpProd.preço : 0;
+                    
+                    const computedTotal = (priceValue - discountVal) + (selectedProduct.tipo === 'FISICO' ? deliveryFeeValue : 0) + bumpPrice;
 
                     return (
                       <div className="flex justify-between border-t border-slate-800 pt-1.5 text-sm font-bold">
@@ -995,22 +1086,65 @@ export function MarketplaceClient({ userId, onOpenChat }: MarketplaceClientProps
       {orderSuccessRef && (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-[#0B0F19]/90 border border-white/10 rounded-3xl max-w-sm w-full p-6 text-center space-y-4">
-            <div className="w-12 h-12 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto text-emerald-400">
-              <Check className="w-6 h-6" />
-            </div>
-            <h4 className="font-display font-bold text-lg text-white">Encomenda Efetuada com Sucesso!</h4>
-            <p className="text-xs text-slate-350 leading-relaxed">
-              Obrigado por comprar no Mercado AO. O seu pedido foi encaminhado ao Produtor local para verificação física. Ative a morada e telemóvel para receber rápidas chamadas.
-            </p>
-            <div className="bg-slate-900/60 p-2 text-xs font-mono text-slate-400 rounded-lg">
-              Pedido ID: #{orderSuccessRef.substring(6, 12)}
-            </div>
-            <button
-              onClick={() => setOrderSuccessRef(null)}
-              className="w-full py-2 bg-gradient-to-r from-blue-700 to-blue-600 hover:from-blue-600 text-white rounded-xl text-xs font-bold"
-            >
-              Excluir Notificação / Acompanhar Vendas
-            </button>
+            {showUpsell && upsellProduct ? (
+              <div className="space-y-4 animate-in fade-in zoom-in duration-300">
+                 <div className="w-16 h-16 bg-purple-500/10 rounded-full flex items-center justify-center mx-auto text-purple-400">
+                    <Flame className="w-8 h-8 animate-pulse" />
+                 </div>
+                 <div>
+                    <h3 className="text-xl font-display font-black text-white">ESPERE! NÃO FECHE AINDA</h3>
+                    <p className="text-xs text-slate-400 mt-1">Temos uma oferta exclusiva só para você, disponível apenas nesta página por tempo limitado.</p>
+                 </div>
+                 
+                 <div className="bg-slate-900 border border-white/5 rounded-2xl p-4 space-y-3">
+                    {upsellProduct.imageUrl && <img src={upsellProduct.imageUrl} className="w-full h-32 object-cover rounded-xl" />}
+                    <div className="text-left">
+                       <h4 className="text-sm font-bold text-white uppercase">{upsellProduct.nome}</h4>
+                       <p className="text-[10px] text-slate-500 line-clamp-2 mt-1 italic">"{upsellProduct.descrição}"</p>
+                       <div className="text-lg font-display font-black text-purple-400 mt-2">{upsellProduct.preço.toLocaleString()} Kz</div>
+                    </div>
+                 </div>
+
+                 <div className="flex flex-col gap-2">
+                    <button 
+                      onClick={() => {
+                        setSelectedProduct(upsellProduct);
+                        setCheckoutModalOpen(true);
+                        setOrderSuccessRef(null);
+                        setShowUpsell(false);
+                      }}
+                      className="w-full py-3 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-purple-600/20"
+                    >
+                      SIM, QUERO APROVEITAR O UPSELL
+                    </button>
+                    <button 
+                      onClick={() => {
+                        setOrderSuccessRef(null);
+                        setShowUpsell(false);
+                      }}
+                      className="text-[10px] text-slate-500 hover:text-white transition-colors"
+                    >
+                      Não, quero apenas o meu pedido original.
+                    </button>
+                 </div>
+              </div>
+            ) : (
+              <>
+                <div className="w-12 h-12 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto text-emerald-400">
+                  <Check className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="font-display font-black text-xl text-white">Pedido Confirmado!</h3>
+                  <p className="text-xs text-slate-400 mt-1">A sua referência é <strong>#{orderSuccessRef.substring(6, 12)}</strong>. Pode acompanhar o estado na lista abaixo ou falar com o vendedor.</p>
+                </div>
+                <button 
+                  onClick={() => setOrderSuccessRef(null)}
+                  className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded-xl"
+                >
+                  Fechar & Acompanhar
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}

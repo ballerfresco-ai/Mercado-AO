@@ -502,7 +502,10 @@ export async function createProduct(
   fileUrl?: string,
   fileName?: string,
   externalLink?: string,
-  digitalContent?: string
+  digitalContent?: string,
+  pixelId?: string,
+  orderBumpProductId?: string,
+  upsellProductId?: string
 ): Promise<Product> {
   const path = 'products';
   try {
@@ -532,6 +535,9 @@ export async function createProduct(
       fileName: fileName || '',
       externalLink: externalLink || '',
       digitalContent: digitalContent || '',
+      pixelId: pixelId || '',
+      orderBumpProductId: orderBumpProductId || '',
+      upsellProductId: upsellProductId || '',
       salesCount: 0,
       createdAt: new Date().toISOString()
     };

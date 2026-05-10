@@ -110,6 +110,9 @@ export function DashboardProducer({ userId, userProfile, onOpenChat }: Dashboard
   const [fileName, setFileName] = useState('');
   const [externalLink, setExternalLink] = useState('');
   const [digitalContent, setDigitalContent] = useState('');
+  const [pixelId, setPixelId] = useState('');
+  const [orderBumpProductId, setOrderBumpProductId] = useState('');
+  const [upsellProductId, setUpsellProductId] = useState('');
   const [isUploadingFile, setIsUploadingFile] = useState(false);
 
   // Coupon form
@@ -307,7 +310,10 @@ export function DashboardProducer({ userId, userProfile, onOpenChat }: Dashboard
         fileUrl,
         fileName,
         externalLink,
-        digitalContent
+        digitalContent,
+        pixelId,
+        orderBumpProductId,
+        upsellProductId
       );
       
       triggerSuccess("Produto cadastrado com sucesso! Aguarda aprovação do ADM.");
@@ -333,6 +339,9 @@ export function DashboardProducer({ userId, userProfile, onOpenChat }: Dashboard
       setFileName('');
       setExternalLink('');
       setDigitalContent('');
+      setPixelId('');
+      setOrderBumpProductId('');
+      setUpsellProductId('');
       
       setActiveTab('meus_produtos');
     } catch (err: any) {
@@ -1169,6 +1178,50 @@ export function DashboardProducer({ userId, userProfile, onOpenChat }: Dashboard
                         value={digitalContent}
                         onChange={(e) => setDigitalContent(e.target.value)}
                       />
+                   </div>
+
+                   <div className="pt-4 border-t border-white/5 space-y-4">
+                      <h4 className="text-[10px] font-mono text-purple-400 uppercase font-black">Marketing & Conversão</h4>
+                      
+                      <div className="space-y-1">
+                        <label className="text-[9px] uppercase text-slate-500 font-bold">ID do Pixel (Facebook/Google)</label>
+                        <input
+                          type="text"
+                          placeholder="Ex: 1234567890"
+                          className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white"
+                          value={pixelId}
+                          onChange={(e) => setPixelId(e.target.value)}
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <label className="text-[9px] uppercase text-slate-500 font-bold">Order Bump (Oferta no Carrinho)</label>
+                          <select
+                            className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white"
+                            value={orderBumpProductId}
+                            onChange={(e) => setOrderBumpProductId(e.target.value)}
+                          >
+                            <option value="">Nenhum</option>
+                            {products.filter(p => p.status === 'approved').map(p => (
+                              <option key={p.id} value={p.id}>{p.nome}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[9px] uppercase text-slate-500 font-bold">Upsell (Oferta Pós-Venda)</label>
+                          <select
+                            className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white"
+                            value={upsellProductId}
+                            onChange={(e) => setUpsellProductId(e.target.value)}
+                          >
+                            <option value="">Nenhum</option>
+                            {products.filter(p => p.status === 'approved').map(p => (
+                              <option key={p.id} value={p.id}>{p.nome}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
                    </div>
                 </div>
               )}

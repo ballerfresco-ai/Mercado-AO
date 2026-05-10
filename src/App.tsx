@@ -41,12 +41,6 @@ export default function App() {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   
-  // Interactive Tester Swapper states
-  const [isTesterSwitcherOpen, setIsTesterSwitcherOpen] = useState(false);
-  
-  // Custom role override for the user interface
-  const [overrideRole, setOverrideRole] = useState<UserRole | null>(null);
-
   // UI state for navigation
   const [currentView, setCurrentView] = useState<'marketplace' | 'dashboard' | 'profile'>('marketplace');
   const [activeChatOrderId, setActiveChatOrderId] = useState<string | null>(null);
@@ -62,7 +56,6 @@ export default function App() {
         setCurrentView('marketplace');
       } else {
         setUserProfile(null);
-        setOverrideRole(null);
         setCurrentView('marketplace');
       }
       setAuthLoading(false);
@@ -81,14 +74,7 @@ export default function App() {
 
   const handleLogout = async () => {
     setActiveChatOrderId(null);
-    setOverrideRole(null);
     await logoutUser();
-  };
-
-  // Switch role simulator (useful for testing on-the-fly)
-  const handleForceOverrideRole = (target: UserRole) => {
-    setOverrideRole(target);
-    setActiveChatOrderId(null); // Clear active chat list on swap
   };
 
   if (authLoading) {
@@ -108,7 +94,7 @@ export default function App() {
   }
 
   // Determine active view role
-  const activeRole: UserRole = overrideRole || userProfile.tipo;
+  const activeRole: UserRole = userProfile.tipo;
 
   return (
     <div className="min-h-screen bg-[#060813] text-white flex flex-col font-sans relative">
@@ -185,7 +171,7 @@ export default function App() {
             <div className="hidden sm:flex flex-col text-right">
               <span className="text-xs font-semibold text-white">{userProfile.nome}</span>
               <span className="text-[10px] font-mono text-purple-400">
-                {userProfile.tipo} {overrideRole ? `(Simulado como ${overrideRole})` : ''}
+                {userProfile.tipo}
               </span>
             </div>
 
@@ -270,81 +256,6 @@ export default function App() {
           />
         )}
       </AnimatePresence>
-
-      {/* ========================================================= */}
-      {/* ⚠️ INTERACTIVE ROLE SWITCHER PANEL FOR TESTERS/EVALUATORS */}
-      {/* ========================================================= */}
-      <div className="fixed bottom-6 left-6 z-55">
-        {!isTesterSwitcherOpen ? (
-          <button
-            onClick={() => setIsTesterSwitcherOpen(true)}
-            className="flex items-center gap-2 bg-slate-900/80 hover:bg-slate-800 border border-white/10 text-slate-400 font-semibold font-mono text-[10px] px-3 py-2 rounded-xl shadow-2xl transition-all"
-            id="open_tester_bar_btn"
-          >
-            <Settings className="w-3.5 h-3.5" />
-            <span>Painel de Desenvolvimento</span>
-          </button>
-        ) : (
-          <div className="bg-[#0F172A] border border-white/10 rounded-2xl p-5 shadow-2xl w-80 space-y-3 relative">
-            <button
-              onClick={() => setIsTesterSwitcherOpen(false)}
-              className="absolute top-3 right-3 text-slate-400 hover:text-white"
-            >
-              <X className="w-4 h-4" />
-            </button>
-            
-            <h5 className="font-display font-bold text-sm flex items-center gap-1.5">
-              <SlidersHorizontal className="w-4 h-4 text-blue-400" />
-              <span>Troca de Perfil de Acesso</span>
-            </h5>
-            <p className="text-[10px] text-slate-400 leading-normal">
-              Utilitário para alternar entre as visões de negócio da plataforma:
-            </p>
-
-            <div className="grid grid-cols-2 gap-2 text-[11px] font-mono font-bold">
-              <button
-                onClick={() => handleForceOverrideRole('Cliente')}
-                className={`py-2 px-2.5 rounded-lg border text-left flex flex-col justify-between ${
-                  activeRole === 'Cliente' ? 'bg-blue-500/10 border-blue-500 text-blue-400' : 'bg-slate-900 border-white/5 text-slate-400 hover:border-white/10'
-                }`}
-              >
-                <span>🛒 Comprador</span>
-              </button>
-
-              <button
-                onClick={() => handleForceOverrideRole('Produtor')}
-                className={`py-2 px-2.5 rounded-lg border text-left flex flex-col justify-between ${
-                  activeRole === 'Produtor' ? 'bg-blue-500/10 border-blue-500 text-blue-400' : 'bg-slate-900 border-white/5 text-slate-400 hover:border-white/10'
-                }`}
-              >
-                <span>🏢 Vendedor</span>
-              </button>
-
-              <button
-                onClick={() => handleForceOverrideRole('Afiliado')}
-                className={`py-2 px-2.5 rounded-lg border text-left flex flex-col justify-between ${
-                  activeRole === 'Afiliado' ? 'bg-blue-500/10 border-blue-500 text-blue-400' : 'bg-slate-900 border-white/5 text-slate-400 hover:border-white/10'
-                }`}
-              >
-                <span>✨ Afiliado</span>
-              </button>
-
-              <button
-                onClick={() => handleForceOverrideRole('ADM')}
-                className={`py-2 px-2.5 rounded-lg border text-left flex flex-col justify-between ${
-                  activeRole === 'ADM' ? 'bg-blue-500/10 border-blue-500 text-blue-400' : 'bg-slate-900 border-white/5 text-slate-400 hover:border-white/10'
-                }`}
-              >
-                <span>👑 Administrador</span>
-              </button>
-            </div>
-
-            <div className="pt-2 border-t border-slate-800 text-[10px] text-slate-500 text-center">
-              Perfil Original: <span className="text-slate-350">{userProfile.tipo}</span>
-            </div>
-          </div>
-        )}
-      </div>
 
     </div>
   );
