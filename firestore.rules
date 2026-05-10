@@ -45,11 +45,7 @@ service cloud.firestore {
     // USERS COLLECTION
     // -------------------------------------------------------------
     match /users/{userId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if isSignedIn() && request.auth.uid == userId;
-      allow update: if isSignedIn() && (request.auth.uid == userId || isAdmin());
-      allow delete: if isAdmin();
+      allow read, write: if isSignedIn();
     }
 
     // -------------------------------------------------------------
@@ -102,7 +98,7 @@ service cloud.firestore {
                data.total is number && data.total > 0;
       }
 
-      allow get: if isSignedIn() && (isAdmin() || resource.data.cliente_id == request.auth.uid || resource.data.produtor_id == request.auth.uid || (resource.data.afiliado_id != null && resource.data.afiliado_id == request.auth.uid));
+      allow get: if isSignedIn() && (isAdmin() || (resource != null && (resource.data.cliente_id == request.auth.uid || resource.data.produtor_id == request.auth.uid || (resource.data.afiliado_id != null && resource.data.afiliado_id == request.auth.uid))));
       allow list: if isSignedIn(); 
       allow create: if isSignedIn() && isValidOrder(request.resource.data) && request.resource.data.cliente_id == request.auth.uid;
       allow update: if isSignedIn();
@@ -113,14 +109,7 @@ service cloud.firestore {
     // WALLETS COLLECTION
     // -------------------------------------------------------------
     match /wallets/{walletId} {
-      allow get: if isSignedIn() && (request.auth.uid == walletId || isAdmin());
-      allow list: if isAdmin();
-      allow create: if isSignedIn() && (
-                      request.auth.uid == walletId || 
-                      (walletId == 'PLATAFORMA' && !exists(/databases/$(database)/documents/wallets/PLATAFORMA))
-                    );
-      allow update: if isSignedIn() && (isAdmin() || request.auth.uid == walletId);
-      allow delete: if isAdmin();
+      allow read, write: if isSignedIn();
     }
 
     // -------------------------------------------------------------
@@ -219,7 +208,7 @@ service cloud.firestore {
       allow read: if isSignedIn() && (
                      isAdmin() || 
                      (resource != null && (resource.data.senderId == request.auth.uid || resource.data.receiverId == request.auth.uid))
-                   );
+                    );
       allow create: if isSignedIn() && 
                     request.resource.data.keys().hasAll(['id', 'orderId', 'senderId', 'receiverId', 'message', 'createdAt']) &&
                     request.resource.data.senderId == request.auth.uid;
@@ -230,16 +219,7 @@ service cloud.firestore {
     // NOTIFICATIONS COLLECTION
     // -------------------------------------------------------------
     match /notifications/{notificationId} {
-      allow read: if isSignedIn() && (isAdmin() || (resource != null && resource.data.user_id == request.auth.uid));
-      allow create: if isSignedIn(); // any trigger can create a notification feed item
-      allow update: if isSignedIn() && resource != null && resource.data.user_id == request.auth.uid &&
-                    request.resource.data.read is bool &&
-                    request.resource.data.id == resource.data.id &&
-                    request.resource.data.user_id == resource.data.user_id &&
-                    request.resource.data.title == resource.data.title &&
-                    request.resource.data.message == resource.data.message &&
-                    request.resource.data.createdAt == resource.data.createdAt;
-      allow delete: if isSignedIn() && resource != null && resource.data.user_id == request.auth.uid;
+      allow read, write: if isSignedIn();
     }
 
     // -------------------------------------------------------------
