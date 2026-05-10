@@ -272,12 +272,18 @@ export async function createUserProfile(userId: string, nome: string, email: str
 // Check if any ADM is already registered to disable ADM creation option
 export async function checkIfAdminExists(): Promise<boolean> {
   const path = 'users';
+  // If not signed in, we can't check due to security rules anyway.
+  // Return true by default to hide the admin registration option for guests.
+  if (!auth.currentUser) return true;
+
   try {
     const q = query(collection(db, 'users'), where('tipo', '==', 'ADM'));
     const snap = await getDocs(q);
     return !snap.empty;
   } catch (error) {
-    handleFirestoreError(error, OperationType.LIST, path);
+    // If it's a permission error, it's safer to assume admin exists to prevent unauthorized registration attempts
+    console.warn("Permission denied checking for admin existence. Assuming one exists.");
+    return true;
   }
 }
 
@@ -484,6 +490,14 @@ export async function createProduct(
   tipo: ProductType = 'FISICO',
   categoria: string = 'Geral',
   imageUrl?: string,
+  images?: string[],
+  subcategoria?: string,
+  estado?: 'Novo' | 'Usado' | 'Reciclado',
+  peso?: string,
+  tamanho?: string,
+  cor?: string,
+  endereco_recolha?: string,
+  contacto_produtor?: string,
   videoUrl?: string,
   fileUrl?: string,
   fileName?: string,
@@ -503,8 +517,16 @@ export async function createProduct(
       status: 'pending', // Starts pending ADM approval
       tipo,
       categoria,
+      subcategoria,
+      estado,
+      peso,
+      tamanho,
+      cor,
+      endereco_recolha,
+      contacto_produtor,
       featured: false,
       imageUrl: imageUrl || '',
+      images: images || [],
       videoUrl: videoUrl || '',
       fileUrl: fileUrl || '',
       fileName: fileName || '',

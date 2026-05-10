@@ -45,7 +45,11 @@ service cloud.firestore {
     // USERS COLLECTION
     // -------------------------------------------------------------
     match /users/{userId} {
-      allow read, write: if isSignedIn();
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow update: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow delete: if isAdmin();
     }
 
     // -------------------------------------------------------------
@@ -64,7 +68,17 @@ service cloud.firestore {
                data.tipo in ['FISICO', 'DIGITAL'] &&
                data.categoria is string &&
                data.salesCount is number &&
-               data.featured is bool;
+               data.featured is bool &&
+               // Optional multi-image support
+               (!data.keys().contains('images') || data.images is list) &&
+               // Physical details (optional in schema but enforced in UI)
+               (!data.keys().contains('subcategoria') || data.subcategoria is string) &&
+               (!data.keys().contains('estado') || data.estado is string) &&
+               (!data.keys().contains('peso') || data.peso is string) &&
+               (!data.keys().contains('tamanho') || data.tamanho is string) &&
+               (!data.keys().contains('cor') || data.cor is string) &&
+               (!data.keys().contains('endereco_recolha') || data.endereco_recolha is string) &&
+               (!data.keys().contains('contacto_produtor') || data.contacto_produtor is string);
       }
 
       allow get: if isSignedIn();

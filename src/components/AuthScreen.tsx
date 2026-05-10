@@ -24,6 +24,9 @@ export function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
 
   useEffect(() => {
     async function checkAdmin() {
+      // Only check if user is authenticated with Google and we are in registration phase
+      if (!isRegistering || !auth.currentUser) return;
+
       try {
         const exists = await checkIfAdminExists();
         setAdminExists(exists);

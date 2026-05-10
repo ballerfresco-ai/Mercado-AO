@@ -73,10 +73,33 @@ export function DashboardProducer({ userId, userProfile, onOpenChat }: Dashboard
   const [prodDescricao, setProdDescricao] = useState('');
   const [prodPreco, setProdPreco] = useState('');
   const [comissaoAfiliadoInput, setComissaoAfiliadoInput] = useState('10');
-  const [imageUrlInput, setImageUrlInput] = useState('');
+  const [imagesList, setImagesList] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [prodType, setProdType] = useState<'FISICO' | 'DIGITAL'>('FISICO');
-  const [prodCategoria, setProdCategoria] = useState('Geral');
+  const [prodCategoria, setProdCategoria] = useState('Alimentação');
+  const [prodSubcategoria, setProdSubcategoria] = useState('');
+  const [prodEstado, setProdEstado] = useState<'Novo' | 'Usado' | 'Reciclado'>('Novo');
+  const [prodPeso, setProdPeso] = useState('');
+  const [prodTamanho, setProdTamanho] = useState('');
+  const [prodCor, setProdCor] = useState('');
+  const [prodEnderecoRecolha, setProdEnderecoRecolha] = useState('');
+  const [prodContacto, setProdContacto] = useState('');
+
+  const CATEGORIES: Record<string, string[]> = {
+    'Alimentação': ['Produtos Frescos', 'Processados/Secos', 'Congelados', 'Bebidas', 'Lanches'],
+    'Moda': ['Roupa Masculina', 'Roupa Feminina', 'Roupa Infantil', 'Calçado', 'Acessórios'],
+    'Eletrónicos': ['Telemóveis', 'Computadores', 'Áudio e Som', 'Eletrodomésticos', 'Acessórios Tech'],
+    'Casa e Decoração': ['Móveis', 'Utensílios', 'Decoração', 'Jardim'],
+    'Beleza e Saúde': ['Cosméticos', 'Saúde', 'Cuidados Pessoais'],
+    'Serviços/Digital': ['E-books', 'Cursos Online', 'Consultoria', 'Software', 'Licenças'],
+    'Outros': ['Artesanato', 'Construção', 'Brinquedos', 'Diversos']
+  };
+
+  useEffect(() => {
+    if (CATEGORIES[prodCategoria]) {
+      setProdSubcategoria(CATEGORIES[prodCategoria][0]);
+    }
+  }, [prodCategoria]);
   
   // Digital specific entries
   const [videoUrl, setVideoUrl] = useState('');
@@ -266,9 +289,17 @@ export function DashboardProducer({ userId, userProfile, onOpenChat }: Dashboard
         prodDescricao,
         parseFloat(prodPreco),
         parseInt(comissaoAfiliadoInput),
-        imageUrlInput,
         prodType,
         prodCategoria,
+        imagesList[0] || '', // main image
+        imagesList,
+        prodSubcategoria,
+        prodEstado,
+        prodPeso,
+        prodTamanho,
+        prodCor,
+        prodEnderecoRecolha,
+        prodContacto,
         videoUrl,
         fileUrl,
         fileName,
@@ -282,11 +313,18 @@ export function DashboardProducer({ userId, userProfile, onOpenChat }: Dashboard
       setProdNome('');
       setProdDescricao('');
       setProdPreco('');
-      setImageUrlInput('');
+      setImagesList([]);
       setBulletsAi('');
       setComissaoAfiliadoInput('10');
       setProdType('FISICO');
-      setProdCategoria('Geral');
+      setProdCategoria('Alimentação');
+      setProdSubcategoria('');
+      setProdEstado('Novo');
+      setProdPeso('');
+      setProdTamanho('');
+      setProdCor('');
+      setProdEnderecoRecolha('');
+      setProdContacto('');
       setVideoUrl('');
       setFileUrl('');
       setFileName('');
@@ -361,19 +399,33 @@ export function DashboardProducer({ userId, userProfile, onOpenChat }: Dashboard
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    if (imagesList.length + files.length > 10) {
+      alert("Pode carregar no máximo 10 fotos por produto.");
+      return;
+    }
 
     setIsUploading(true);
     try {
-      const url = await uploadToStorage(`products/images/${userId}/${Date.now()}_${file.name}`, file);
-      setImageUrlInput(url);
-      triggerSuccess("Imagem do produto carregada com sucesso!");
+      const uploadPromises = Array.from(files).map(async (file: File) => {
+        const url = await uploadToStorage(`products/images/${userId}/${Date.now()}_${file.name}`, file);
+        return url;
+      });
+
+      const urls = await Promise.all(uploadPromises);
+      setImagesList(prev => [...prev, ...urls]);
+      triggerSuccess(`${urls.length} imagem(ns) carregada(s) com sucesso!`);
     } catch (error: any) {
       alert("Erro no upload da imagem: " + error.message);
     } finally {
       setIsUploading(false);
     }
+  };
+
+  const removeImage = (index: number) => {
+    setImagesList(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -888,14 +940,36 @@ export function DashboardProducer({ userId, userProfile, onOpenChat }: Dashboard
                     value={prodCategoria}
                     onChange={(e) => setProdCategoria(e.target.value)}
                   >
-                    <option value="Geral">Geral</option>
-                    <option value="E-books">E-books</option>
-                    <option value="Cursos Online">Cursos Online</option>
-                    <option value="Software/Licenças">Software/Licenças</option>
-                    <option value="Templates">Templates</option>
-                    <option value="Alimentação">Alimentação</option>
-                    <option value="Moda">Moda</option>
-                    <option value="Eletrónicos">Eletrónicos</option>
+                    {Object.keys(CATEGORIES).map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-mono uppercase text-slate-450 block">Subcategoria</label>
+                  <select
+                    className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-blue-500"
+                    value={prodSubcategoria}
+                    onChange={(e) => setProdSubcategoria(e.target.value)}
+                  >
+                    {CATEGORIES[prodCategoria]?.map(sub => (
+                      <option key={sub} value={sub}>{sub}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                   <label className="text-xs font-mono uppercase text-slate-450 block">Estado do Produto</label>
+                   <select
+                    className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-blue-500"
+                    value={prodEstado}
+                    onChange={(e) => setProdEstado(e.target.value as any)}
+                  >
+                    <option value="Novo">Novo</option>
+                    <option value="Usado">Usado</option>
+                    <option value="Reciclado">Reciclado</option>
                   </select>
                 </div>
               </div>
@@ -913,20 +987,109 @@ export function DashboardProducer({ userId, userProfile, onOpenChat }: Dashboard
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-mono uppercase text-slate-450 block">Comissão Afiliados (%)</label>
-                  <select
+                  <label className="text-xs font-mono uppercase text-slate-450 block">Comissão Afiliados (1-100%)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="100"
+                    required
                     className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-blue-500"
                     value={comissaoAfiliadoInput}
                     onChange={(e) => setComissaoAfiliadoInput(e.target.value)}
-                  >
-                    <option value="5">5% comissão</option>
-                    <option value="10">10% comissão</option>
-                    <option value="15">15% comissão</option>
-                    <option value="20">20% comissão</option>
-                    <option value="30">30% comissão</option>
-                  </select>
+                  />
                 </div>
               </div>
+
+              {/* Earnings Calculator */}
+              <div className="p-4 bg-emerald-500/5 rounded-2xl border border-emerald-500/10 space-y-2">
+                <div className="flex justify-between items-center text-[10px] font-mono text-emerald-400 uppercase font-black">
+                  <span>Calculadora Automática de Ganhos</span>
+                  <DollarSign className="w-3 h-3" />
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="space-y-1">
+                    <div className="text-[8px] text-slate-500 uppercase">Preço</div>
+                    <div className="text-xs text-white font-bold">{parseFloat(prodPreco || '0').toLocaleString()} Kz</div>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-[8px] text-slate-500 uppercase">Taxas (Plat + Afil)</div>
+                    <div className="text-xs text-red-400 font-bold">
+                      {((parseFloat(prodPreco || '0') * 0.1) + (parseFloat(prodPreco || '0') * (parseFloat(comissaoAfiliadoInput || '0') / 100))).toLocaleString()} Kz
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-[8px] text-slate-500 uppercase font-bold text-emerald-400">Você Recebe</div>
+                    <div className="text-sm text-emerald-400 font-black">
+                      {(parseFloat(prodPreco || '0') - (parseFloat(prodPreco || '0') * 0.1) - (parseFloat(prodPreco || '0') * (parseFloat(comissaoAfiliadoInput || '0') / 100))).toLocaleString()} Kz
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Physical Specific Details */}
+              {prodType === 'FISICO' && (
+                <div className="space-y-4 p-4 bg-blue-500/5 rounded-2xl border border-blue-500/10">
+                   <h4 className="text-[10px] font-mono text-blue-400 uppercase font-black">Detalhes Logísticos e Físicos</h4>
+                   
+                   <div className="grid grid-cols-3 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-[9px] uppercase text-slate-500 font-bold">Peso (kg/g)</label>
+                        <input
+                          type="text"
+                          placeholder="Ex: 500g"
+                          className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white"
+                          value={prodPeso}
+                          onChange={(e) => setProdPeso(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] uppercase text-slate-500 font-bold">Tamanho</label>
+                        <input
+                          type="text"
+                          placeholder="Ex: XL ou 42"
+                          className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white"
+                          value={prodTamanho}
+                          onChange={(e) => setProdTamanho(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] uppercase text-slate-500 font-bold">Cor</label>
+                        <input
+                          type="text"
+                          placeholder="Ex: Azul"
+                          className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white"
+                          value={prodCor}
+                          onChange={(e) => setProdCor(e.target.value)}
+                        />
+                      </div>
+                   </div>
+
+                   <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-[9px] uppercase text-slate-500 font-bold">Endereço de Recolha</label>
+                        <input
+                          type="text"
+                          required={prodType === 'FISICO'}
+                          placeholder="Ex: Viana, Zango II"
+                          className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white"
+                          value={prodEnderecoRecolha}
+                          onChange={(e) => setProdEnderecoRecolha(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] uppercase text-slate-500 font-bold">Contacto Produtor</label>
+                        <input
+                          type="tel"
+                          required={prodType === 'FISICO'}
+                          placeholder="Ex: 923..."
+                          className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white"
+                          value={prodContacto}
+                          onChange={(e) => setProdContacto(e.target.value)}
+                        />
+                      </div>
+                   </div>
+                </div>
+              )}
 
               {/* Digital Specific Fields */}
               {prodType === 'DIGITAL' && (
@@ -989,42 +1152,35 @@ export function DashboardProducer({ userId, userProfile, onOpenChat }: Dashboard
               )}
 
               <div className="space-y-1">
-                <label className="text-xs font-mono uppercase text-slate-450 block">Imagem Ilustrativa do Produto</label>
-                <div className="relative group">
-                  <div className={`w-full h-32 rounded-xl bg-slate-950 border-2 border-dashed transition-all flex flex-col items-center justify-center gap-2 overflow-hidden ${
-                    imageUrlInput ? 'border-blue-500/50' : 'border-white/10 hover:border-white/20'
-                  }`}>
-                    {imageUrlInput ? (
-                      <div className="relative w-full h-full group">
-                        <img src={imageUrlInput} className="w-full h-full object-cover" alt="Preview" />
-                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                          <button 
-                            type="button"
-                            onClick={() => setImageUrlInput('')}
-                            className="bg-red-500 p-2 rounded-full text-white"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        <Upload className={`w-6 h-6 ${isUploading ? 'animate-bounce text-blue-500' : 'text-slate-500'}`} />
-                        <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">
-                          {isUploading ? 'A carregar...' : 'Fazer Upload (PNG, JPG)'}
-                        </span>
-                      </>
-                    )}
-                    <input 
-                      type="file" 
-                      accept="image/*"
-                      onChange={handleImageUpload}
-                      className="absolute inset-0 opacity-0 cursor-pointer"
-                      disabled={isUploading}
-                    />
-                  </div>
-                  {!imageUrlInput && (
-                    <p className="text-[10px] text-slate-600 mt-1 italic">Tamanho máximo: 2MB. O arquivo será incluído no seu catálogo.</p>
+                <label className="text-xs font-mono uppercase text-slate-450 block">Fotos do Produto (Máx 10)</label>
+                <div className="grid grid-cols-5 gap-2">
+                  {imagesList.map((url, idx) => (
+                    <div key={idx} className="relative aspect-square rounded-xl overflow-hidden bg-slate-950 border border-white/10 group">
+                      <img src={url} className="w-full h-full object-cover" alt={`Preview ${idx}`} />
+                      <button 
+                        type="button"
+                        onClick={() => removeImage(idx)}
+                        className="absolute top-1 right-1 bg-red-500/80 p-1 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                  {imagesList.length < 10 && (
+                    <div className="relative aspect-square rounded-xl bg-slate-950 border-2 border-dashed border-white/10 hover:border-blue-500/50 transition-all flex flex-col items-center justify-center p-2 cursor-pointer">
+                      <Upload className={`w-4 h-4 ${isUploading ? 'animate-bounce text-blue-500' : 'text-slate-500'}`} />
+                      <span className="text-[8px] text-slate-500 font-mono text-center mt-1 uppercase">
+                        {isUploading ? '...' : '+ Foto'}
+                      </span>
+                      <input 
+                        type="file" 
+                        accept="image/*"
+                        multiple
+                        onChange={handleImageUpload}
+                        className="absolute inset-0 opacity-0 cursor-pointer"
+                        disabled={isUploading}
+                      />
+                    </div>
                   )}
                 </div>
               </div>

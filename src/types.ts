@@ -25,8 +25,16 @@ export interface Product {
   status: ProductStatus;
   tipo: ProductType;
   categoria: string;
+  subcategoria?: string;
+  estado?: 'Novo' | 'Usado' | 'Reciclado';
+  peso?: string;
+  tamanho?: string;
+  cor?: string;
+  endereco_recolha?: string;
+  contacto_produtor?: string;
   featured: boolean;
-  imageUrl?: string;
+  imageUrl?: string; // main image
+  images?: string[]; // multi-image support
   videoUrl?: string; // presentation video
   fileUrl?: string; // the protected digital file
   fileName?: string;
