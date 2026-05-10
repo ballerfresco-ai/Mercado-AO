@@ -198,8 +198,23 @@
       },
       "required": ["id", "user_id", "product_id", "progress", "accessGrantedAt"]
     }
+    "Location": {
+      "title": "Bairro",
+      "description": "Represents a neighborhood in Luanda for delivery selection.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nome": { "type": "string" },
+        "isCustom": { "type": "boolean", "description": "True if added by admin, false for defaults." }
+      },
+      "required": ["id", "nome"]
+    }
   },
   "firestore": {
+    "/bairros/{bairroId}": {
+      "schema": "Location",
+      "description": "Custom neighborhoods added by the admin."
+    },
     "/users/{userId}": {
       "schema": "User",
       "description": "Platform users profiles."

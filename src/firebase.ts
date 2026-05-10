@@ -668,11 +668,6 @@ export const LUANDA_BAIRROS = [
 ];
 
 export async function setDeliveryFee(bairro: string, valor: number): Promise<void> {
-  // Validate that it's a Luanda bairro
-  if (!LUANDA_BAIRROS.includes(bairro)) {
-    throw new Error("Localidade inválida. Entregas disponíveis apenas para Luanda.");
-  }
-
   const id = `fee_${bairro.toLowerCase().replace(/\s+/g, '_')}`;
   const path = `deliveryFees/${id}`;
   try {
@@ -683,6 +678,29 @@ export async function setDeliveryFee(bairro: string, valor: number): Promise<voi
     });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function addBairro(nome: string): Promise<void> {
+  const id = `bairro_${nome.toLowerCase().replace(/\s+/g, '_')}`;
+  const path = `bairros/${id}`;
+  try {
+    await setDoc(doc(db, 'bairros', id), {
+      id,
+      nome,
+      isCustom: true
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function deleteBairro(id: string): Promise<void> {
+  const path = `bairros/${id}`;
+  try {
+    await deleteDoc(doc(db, 'bairros', id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
   }
 }
 

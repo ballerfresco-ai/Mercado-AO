@@ -112,6 +112,12 @@ export interface DeliveryFee {
   valor: number;
 }
 
+export interface Bairro {
+  id: string;
+  nome: string;
+  isCustom?: boolean;
+}
+
 export interface Review {
   id: string;
   cliente_id: string;

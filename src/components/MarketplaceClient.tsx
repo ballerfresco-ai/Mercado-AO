@@ -15,7 +15,7 @@ import {
   where, 
   onSnapshot 
 } from 'firebase/firestore';
-import { Product, Coupon, DeliveryFee, Order, UserDigitalAccess } from '../types';
+import { Product, Coupon, DeliveryFee, Order, UserDigitalAccess, Bairro } from '../types';
 import { 
   ShoppingBag, 
   MapPin, 
@@ -62,6 +62,7 @@ export function MarketplaceClient({ userId, onOpenChat }: MarketplaceClientProps
   const [products, setProducts] = useState<Product[]>([]);
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [deliveryFees, setDeliveryFees] = useState<DeliveryFee[]>([]);
+  const [customBairros, setCustomBairros] = useState<Bairro[]>([]);
   const [activeOrders, setActiveOrders] = useState<Order[]>([]);
 
   // Search/Filters states
@@ -129,6 +130,12 @@ export function MarketplaceClient({ userId, onOpenChat }: MarketplaceClientProps
       handleFirestoreError(error, OperationType.LIST, 'deliveryFees');
     });
 
+    const unsubBairros = onSnapshot(collection(db, 'bairros'), (snap) => {
+      setCustomBairros(snap.docs.map(d => d.data() as Bairro));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'bairros');
+    });
+
     // 4. Fetch orders made by this client
     const qOrders = query(collection(db, 'orders'), where('cliente_id', '==', userId));
     const unsubOrders = onSnapshot(qOrders, (snap) => {
@@ -148,6 +155,7 @@ export function MarketplaceClient({ userId, onOpenChat }: MarketplaceClientProps
       unsubProds();
       unsubCoupons();
       unsubFees();
+      unsubBairros();
       unsubOrders();
       unsubAccess();
     };
@@ -254,6 +262,10 @@ export function MarketplaceClient({ userId, onOpenChat }: MarketplaceClientProps
   // Computations
   const featuredProducts = products.filter(p => p.featured);
   const normalProducts = products.filter(p => !p.featured);
+
+  const allAvailableBairros = [...LUANDA_BAIRROS, ...(customBairros || []).map(b => b.nome)]
+    .filter((v, i, a) => a.indexOf(v) === i)
+    .sort();
 
   return (
     <div className="space-y-10" id="marketplace_client">
@@ -819,7 +831,7 @@ export function MarketplaceClient({ userId, onOpenChat }: MarketplaceClientProps
                         onChange={(e) => handleBairroChange(e.target.value)}
                       >
                         <option value="">Selecione um bairro...</option>
-                        {LUANDA_BAIRROS.map(b => (
+                        {allAvailableBairros.map(b => (
                           <option key={b} value={b}>{b}</option>
                         ))}
                       </select>

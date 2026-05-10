@@ -9,6 +9,8 @@ import {
   saveCoupon, 
   deleteCoupon, 
   updateOrderStatus,
+  addBairro,
+  deleteBairro,
   auth,
   getUserProfile,
   updateUserProfile,
@@ -30,6 +32,7 @@ import {
   Order, 
   Withdrawal, 
   DeliveryFee, 
+  Bairro,
   Coupon, 
   Wallet
 } from '../types';
@@ -87,6 +90,7 @@ export function DashboardAdmin({ userId }: DashboardAdminProps) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
   const [deliveryFees, setDeliveryFees] = useState<DeliveryFee[]>([]);
+  const [customBairros, setCustomBairros] = useState<Bairro[]>([]);
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [platformWallet, setPlatformWallet] = useState<Wallet | null>(null);
 
@@ -130,6 +134,12 @@ export function DashboardAdmin({ userId }: DashboardAdminProps) {
       setDeliveryFees(snap.docs.map(d => d.data() as DeliveryFee));
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'deliveryFees');
+    });
+
+    const unsubBairros = onSnapshot(collection(db, 'bairros'), (snap) => {
+      setCustomBairros(snap.docs.map(d => d.data() as Bairro));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'bairros');
     });
 
     const unsubCoupons = onSnapshot(collection(db, 'coupons'), (snap) => {
@@ -234,7 +244,7 @@ export function DashboardAdmin({ userId }: DashboardAdminProps) {
         {activeTab === 'financeiro' && <AdminFinance orders={orders} withdrawals={withdrawals} onApprove={approveWithdrawal} onReject={setIsRejecting} />}
         {activeTab === 'aprovacao' && <AdminApproval products={products} onApprove={updateProductStatus} onReject={updateProductStatus} />}
         {activeTab === 'usuarios' && <AdminUsers users={users} onBlock={handleUpdateUserStatus} onDelete={deleteUser} />}
-        {activeTab === 'taxas' && <AdminDeliveryFees fees={deliveryFees} onAdd={setDeliveryFee} onDelete={deleteDeliveryFee} />}
+        {activeTab === 'taxas' && <AdminDeliveryFees fees={deliveryFees} onAdd={setDeliveryFee} onDelete={deleteDeliveryFee} customBairros={customBairros} onAddBairro={addBairro} onDeleteBairro={deleteBairro} />}
         {activeTab === 'cupons' && <AdminCoupons coupons={coupons} onSave={saveCoupon} onDelete={deleteCoupon} />}
         {activeTab === 'perfil' && <AdminProfileSection userId={userId} users={users} />}
       </div>
@@ -809,11 +819,12 @@ function AdminUsers({ users, onBlock, onDelete }: any) {
   );
 }
 
-function AdminDeliveryFees({ fees, onAdd, onDelete }: any) {
+function AdminDeliveryFees({ fees, onAdd, onDelete, customBairros, onAddBairro, onDeleteBairro }: any) {
   const [bairro, setBairro] = useState('');
   const [valor, setValor] = useState('');
+  const [newBairro, setNewBairro] = useState('');
 
-  const submit = (e: any) => {
+  const submitFee = (e: any) => {
     e.preventDefault();
     if (!bairro || !valor) return;
     onAdd(bairro, parseFloat(valor));
@@ -821,38 +832,129 @@ function AdminDeliveryFees({ fees, onAdd, onDelete }: any) {
     setValor('');
   };
 
-  return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-      <div className="bg-[#0B0F19] p-8 rounded-3xl border border-white/5 h-fit">
-        <h3 className="text-xl font-bold text-white mb-6">Adicionar Localidade</h3>
-        <form onSubmit={submit} className="space-y-6">
-          <div className="space-y-2">
-            <label className="text-xs text-slate-500 uppercase font-mono tracking-widest pl-1">Seleccionar Bairro de Luanda</label>
-            <select className="w-full bg-[#05070A] border border-white/10 rounded-2xl p-4 text-white outline-none focus:border-blue-500 appearance-none" value={bairro} onChange={(e) => setBairro(e.target.value)}>
-              <option value="">Escolher...</option>
-              {LUANDA_BAIRROS.map(b => <option key={b} value={b}>{b}</option>)}
-            </select>
-          </div>
-          <div className="space-y-2">
-            <label className="text-xs text-slate-500 uppercase font-mono tracking-widest pl-1">Preço Entrega (Kz)</label>
-            <input className="w-full bg-[#05070A] border border-white/10 rounded-2xl p-4 text-white outline-none focus:border-blue-500" placeholder="2500" value={valor} onChange={(e) => setValor(e.target.value)} />
-          </div>
-          <button type="submit" className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold shadow-lg shadow-blue-600/20 hover:scale-[1.01] transition-all">Salvar Taxa</button>
-        </form>
-      </div>
+  const submitNewBairro = (e: any) => {
+    e.preventDefault();
+    if (!newBairro.trim()) return;
+    onAddBairro(newBairro.trim());
+    setNewBairro('');
+  };
 
-      <div className="bg-[#0B0F19] p-8 rounded-3xl border border-white/5 h-fit">
-        <h3 className="text-xl font-bold text-white mb-6">Tabela Vigente (Luanda)</h3>
-        <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-          {fees.map((f: any) => (
-            <div key={f.id} className="flex justify-between items-center p-4 bg-white/5 rounded-2xl border border-white/5 transition-all hover:bg-white/[0.08]">
-              <div>
-                <p className="text-sm font-bold text-white">{f.bairro}</p>
-                <p className="text-xs text-blue-400 font-mono">{f.valor.toLocaleString()} Kz</p>
-              </div>
-              <button onClick={() => onDelete(f.id)} className="p-2 text-slate-500 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
+  const allAvailableBairros = [...LUANDA_BAIRROS, ...(customBairros || []).map((b: any) => b.nome)]
+    .filter((v, i, a) => a.indexOf(v) === i)
+    .sort();
+
+  return (
+    <div className="space-y-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Gestão de Bairros */}
+        <div className="bg-[#0B0F19] p-8 rounded-3xl border border-white/5 space-y-6">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-10 h-10 bg-blue-500/10 rounded-xl flex items-center justify-center text-blue-500">
+               <MapPin className="w-5 h-5" />
             </div>
-          ))}
+            <div>
+              <h3 className="text-lg font-bold text-white">Localidades (Bairros)</h3>
+              <p className="text-[10px] text-slate-500 uppercase font-mono">Adicionar bairros personalizados</p>
+            </div>
+          </div>
+
+          <form onSubmit={submitNewBairro} className="flex gap-2">
+            <input 
+              className="flex-1 bg-[#05070A] border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-blue-500" 
+              placeholder="Nome do novo bairro..." 
+              value={newBairro} 
+              onChange={(e) => setNewBairro(e.target.value)} 
+            />
+            <button type="submit" className="p-3 bg-blue-600 text-white rounded-xl hover:bg-blue-500 transition-all">
+              <Plus className="w-5 h-5" />
+            </button>
+          </form>
+
+          <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
+            <p className="text-[10px] text-slate-500 uppercase font-mono mb-2">Bairros Personalizados</p>
+            {customBairros && customBairros.length > 0 ? (
+              customBairros.map((b: any) => (
+                <div key={b.id} className="flex justify-between items-center p-3 bg-slate-900/50 rounded-xl border border-white/5">
+                  <span className="text-xs text-white font-bold">{b.nome}</span>
+                  <button onClick={() => onDeleteBairro(b.id)} className="text-slate-500 hover:text-red-500 p-1">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))
+            ) : (
+              <p className="text-[10px] text-slate-600 italic">Nenhum bairro personalizado.</p>
+            )}
+
+            <div className="pt-4 border-t border-white/5 opacity-50">
+               <p className="text-[10px] text-slate-500 uppercase font-mono mb-2">Bairros Padrão (Leitura)</p>
+               <div className="flex flex-wrap gap-1.5">
+                  {LUANDA_BAIRROS.map(b => (
+                    <span key={b} className="text-[9px] bg-slate-800 text-slate-400 px-2 py-1 rounded-md">{b}</span>
+                  ))}
+               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Gestão de Taxas */}
+        <div className="bg-[#0B0F19] p-8 rounded-3xl border border-white/5 space-y-6">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center text-emerald-500">
+               <Truck className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-white">Configurar Taxas</h3>
+              <p className="text-[10px] text-slate-500 uppercase font-mono">Definir preço de entrega por zona</p>
+            </div>
+          </div>
+
+          <form onSubmit={submitFee} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-[10px] text-slate-500 uppercase font-mono">Selecionar Bairro</label>
+                <select 
+                  className="w-full bg-[#05070A] border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-blue-500"
+                  value={bairro} 
+                  onChange={(e) => setBairro(e.target.value)}
+                >
+                  <option value="">Escolher...</option>
+                  {allAvailableBairros.map(b => (
+                    <option key={b} value={b}>{b}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] text-slate-500 uppercase font-mono">Preço (Kz)</label>
+                <input 
+                  className="w-full bg-[#05070A] border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-blue-500" 
+                  placeholder="Ex: 2000" 
+                  value={valor} 
+                  onChange={(e) => setValor(e.target.value)} 
+                />
+              </div>
+            </div>
+            <button type="submit" className="w-full py-3.5 bg-emerald-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest shadow-lg shadow-emerald-600/20">
+              Salvar Taxa de Entrega
+            </button>
+          </form>
+
+          <div className="space-y-2 pt-4">
+            <p className="text-[10px] text-slate-500 uppercase font-mono mb-2">Taxas Definidas</p>
+            <div className="grid grid-cols-1 gap-2 max-h-[300px] overflow-y-auto pr-2 font-mono">
+              {fees.map((f: any) => (
+                <div key={f.id} className="flex justify-between items-center p-3.5 bg-slate-900 border border-white/5 rounded-xl">
+                  <div className="flex flex-col">
+                    <span className="text-xs font-bold text-white">{f.bairro}</span>
+                    <span className="text-[10px] text-emerald-500 font-black">{f.valor.toLocaleString()} Kz</span>
+                  </div>
+                  <button onClick={() => onDelete(f.id)} className="text-slate-500 hover:text-red-500 transition-colors p-2">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+              {fees.length === 0 && <p className="text-center py-6 text-slate-600 text-[10px] italic">Nenhuma taxa personalizada. O sistema usará 1.500 Kz como padrão.</p>}
+            </div>
+          </div>
         </div>
       </div>
     </div>
