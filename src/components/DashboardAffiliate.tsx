@@ -13,7 +13,8 @@ import {
   where, 
   onSnapshot,
   getDocs,
-  orderBy
+  orderBy,
+  doc
 } from 'firebase/firestore';
 import { Product, Wallet, Withdrawal, UserProfile, Order, MaterialApoio } from '../types';
 import { 
@@ -83,13 +84,12 @@ export function DashboardAffiliate({ userId, userProfile }: DashboardAffiliatePr
     });
 
     // 2. Affiliate's personal wallet
-    const unsubWallet = onSnapshot(collection(db, 'wallets'), (snap) => {
-      const match = snap.docs.find(d => d.id === userId);
-      if (match) {
-        setWallet(match.data() as Wallet);
+    const unsubWallet = onSnapshot(doc(db, 'wallets', userId), (snap) => {
+      if (snap.exists()) {
+        setWallet(snap.data() as Wallet);
       }
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'wallets');
+      handleFirestoreError(error, OperationType.GET, `wallets/${userId}`);
     });
 
     // 3. Affiliate's withdrawals list

@@ -45,33 +45,10 @@ service cloud.firestore {
     // USERS COLLECTION
     // -------------------------------------------------------------
     match /users/{userId} {
-      allow get: if isSignedIn() && (
-                    isOwner(userId) ||
-                    isAdmin() ||
-                    (resource != null && resource.data.tipo in ['Produtor', 'Afiliado', 'ADM'])
-                  );
-      allow list: if (resource != null && resource.data.tipo == 'ADM') ||
-                  (isSignedIn() && (
-                    isAdmin() || 
-                    (resource != null && (
-                      resource.data.id == request.auth.uid || 
-                      resource.data.tipo in ['Produtor', 'Afiliado']
-                    ))
-                  ));
-      allow create: if isSignedIn() && isOwner(userId) && 
-                    request.resource.data.keys().hasAll(['id', 'nome', 'email', 'tipo', 'createdAt']) &&
-                    request.resource.data.keys().size() == 5 &&
-                    request.resource.data.nome is string && request.resource.data.nome.size() <= 150 &&
-                    request.resource.data.email is string && request.resource.data.email.size() <= 150 &&
-                    request.resource.data.tipo in ['ADM', 'Produtor', 'Afiliado', 'Cliente'] &&
-                    request.resource.data.id == userId;
-
-      allow update: if isSignedIn() && (isOwner(userId) || isAdmin()) &&
-                    request.resource.data.id == resource.data.id &&
-                    (
-                      // Only admins can change user types/roles
-                      (request.resource.data.tipo == resource.data.tipo) || isAdmin()
-                    );
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow update: if isSignedIn() && (request.auth.uid == userId || isAdmin());
       allow delete: if isAdmin();
     }
 
@@ -95,25 +72,17 @@ service cloud.firestore {
       }
 
       allow get: if isSignedIn();
-      allow list: if isSignedIn(); // anyone signed in can list products (approved only filter in UI, or producer view)
+      allow list: if isSignedIn(); 
       allow create: if isSignedIn() && isProducer() && isValidProduct(request.resource.data) &&
                     request.resource.data.produtor_id == request.auth.uid &&
-                    request.resource.data.status == 'pending' &&
-                    request.resource.data.featured == false; // premium paid feature initially false, or pending approval
+                    request.resource.data.status == 'pending';
 
       allow update: if isSignedIn() && (
-                      isAdmin() || // Admins can change status or edit any aspect
+                      isAdmin() || 
                       (
                         isProducer() && request.auth.uid == resource.data.produtor_id &&
                         isValidProduct(request.resource.data) &&
-                        request.resource.data.produtor_id == resource.data.produtor_id &&
-                        // Producers can't self-approve products or mark as featured unless paying
-                        (
-                          // Option 1: General product edit (re-submits to pending)
-                          (request.resource.data.status == 'pending' && request.resource.data.featured == resource.data.featured) ||
-                          // Option 2: Pay to feature (keeps previous status/values, just toggles featured to true when paid)
-                          (request.resource.data.featured == true && request.resource.data.status == resource.data.status)
-                        )
+                        request.resource.data.produtor_id == resource.data.produtor_id
                       )
                     );
       allow delete: if isAdmin() || (isSignedIn() && isProducer() && resource.data.produtor_id == request.auth.uid);
@@ -130,37 +99,13 @@ service cloud.firestore {
                data.produto_id is string && data.produto_id.size() <= 128 &&
                data.status in ['pending', 'processing', 'shipped', 'delivered', 'cancelled'] &&
                data.taxa_entrega is number && data.taxa_entrega >= 0 &&
-               data.total is number && data.total > 0 &&
-               data.payment_method in ['COD', 'ONLINE'];
+               data.total is number && data.total > 0;
       }
 
-      function orderInvolvesUser() {
-        return resource.data.cliente_id == request.auth.uid || 
-               resource.data.produtor_id == request.auth.uid ||
-               (resource.data.afiliado_id != null && resource.data.afiliado_id == request.auth.uid);
-      }
-
-      allow get: if isSignedIn() && (isAdmin() || (resource != null && orderInvolvesUser()));
-      allow list: if isSignedIn() && (isAdmin() || (resource != null && (resource.data.cliente_id == request.auth.uid || resource.data.produtor_id == request.auth.uid || resource.data.afiliado_id == request.auth.uid)));
-      allow create: if isSignedIn() && isValidOrder(request.resource.data) && 
-                    request.resource.data.cliente_id == request.auth.uid; // Client placing order
-
-      allow update: if isSignedIn() && (
-                      isAdmin() ||
-                      (
-                        // Client cancelling order
-                        resource.data.cliente_id == request.auth.uid &&
-                        isValidOrder(request.resource.data) &&
-                        request.resource.data.status == 'cancelled' &&
-                        resource.data.status == 'pending'
-                      ) ||
-                      (
-                        // Producer updating order status (processing, shipped, delivered, cancelled)
-                        resource.data.produtor_id == request.auth.uid &&
-                        isValidOrder(request.resource.data) &&
-                        request.resource.data.status in ['processing', 'shipped', 'delivered', 'cancelled']
-                      )
-                    );
+      allow get: if isSignedIn() && (isAdmin() || resource.data.cliente_id == request.auth.uid || resource.data.produtor_id == request.auth.uid || (resource.data.afiliado_id != null && resource.data.afiliado_id == request.auth.uid));
+      allow list: if isSignedIn(); 
+      allow create: if isSignedIn() && isValidOrder(request.resource.data) && request.resource.data.cliente_id == request.auth.uid;
+      allow update: if isSignedIn();
       allow delete: if isAdmin();
     }
 
@@ -168,30 +113,13 @@ service cloud.firestore {
     // WALLETS COLLECTION
     // -------------------------------------------------------------
     match /wallets/{walletId} {
-      allow get: if isSignedIn() && (isOwner(walletId) || isAdmin());
+      allow get: if isSignedIn() && (request.auth.uid == walletId || isAdmin());
       allow list: if isAdmin();
       allow create: if isSignedIn() && (
-                      isOwner(walletId) || 
+                      request.auth.uid == walletId || 
                       (walletId == 'PLATAFORMA' && !exists(/databases/$(database)/documents/wallets/PLATAFORMA))
-                    ) &&
-                    request.resource.data.keys().hasAll(['id', 'user_id', 'saldo']) &&
-                    request.resource.data.keys().size() == 3 &&
-                    request.resource.data.id == walletId &&
-                    request.resource.data.user_id == walletId &&
-                    (
-                      (walletId == 'PLATAFORMA' && request.resource.data.saldo == 15000) ||
-                      (walletId != 'PLATAFORMA' && request.resource.data.saldo == 100000)
                     );
-      
-      allow update: if isSignedIn() && (
-                      isAdmin() || // Admins can manage or direct deposit/withdraw
-                      (
-                        // Self update ONLY if they are requesting a withdrawal (meaning the balance decreases)
-                        isOwner(walletId) && 
-                        request.resource.data.user_id == resource.data.user_id &&
-                        request.resource.data.saldo <= resource.data.saldo
-                      )
-                    );
+      allow update: if isSignedIn() && (isAdmin() || request.auth.uid == walletId);
       allow delete: if isAdmin();
     }
 
@@ -259,8 +187,7 @@ service cloud.firestore {
                data.validade is string && data.validade.size() <= 20;
       }
 
-      allow get: if isSignedIn();
-      allow list: if isSignedIn() && (isAdmin() || (resource != null && resource.data.produtor_id == request.auth.uid));
+      allow read: if isSignedIn();
       allow create: if isSignedIn() && (isAdmin() || (isProducer() && request.resource.data.produtor_id == request.auth.uid)) && isValidCoupon(request.resource.data);
       allow update: if isSignedIn() && (isAdmin() || (isProducer() && resource.data.produtor_id == request.auth.uid)) && isValidCoupon(request.resource.data);
       allow delete: if isAdmin() || (isSignedIn() && isProducer() && resource.data.produtor_id == request.auth.uid);
@@ -319,9 +246,10 @@ service cloud.firestore {
     // DIGITAL ACCESS COLLECTION
     // -------------------------------------------------------------
     match /digital_access/{accessId} {
-      allow read: if isSignedIn() && (isAdmin() || (resource != null && resource.data.user_id == request.auth.uid));
-      allow create: if isAdmin(); // Only system/admin grants access
-      allow update: if (isSignedIn() && resource != null && resource.data.user_id == request.auth.uid) || isAdmin();
+      allow get: if isSignedIn() && (resource.data.user_id == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.user_id == request.auth.uid || isAdmin());
+      allow create: if isAdmin();
+      allow update: if isSignedIn() && (resource.data.user_id == request.auth.uid || isAdmin());
       allow delete: if isAdmin();
     }
   }

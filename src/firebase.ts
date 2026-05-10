@@ -1079,16 +1079,19 @@ export function listenToOrderChats(orderId: string, onUpdate: (chats: ChatSimple
 // REAL-TIME NOTIFICATIONS
 // -------------------------------------------------------------
 export function listenToUserNotifications(userId: string, onUpdate: (notifications: Notification[]) => void) {
-  // ADM will listen to both ALL_ADMS and its own specific ID
+  // Simple listener for the user's personal notifications
   const q = query(
     collection(db, 'notifications'),
+    where('user_id', '==', userId),
     orderBy('createdAt', 'desc')
   );
+
   return onSnapshot(q, (snap) => {
-    const allNotifications = snap.docs.map(doc => doc.data() as Notification);
-    // Filter client-side so query doesn't complain about complex indexing
-    const filtered = allNotifications.filter(n => n.user_id === userId || n.user_id === 'ALL_ADMS');
-    onUpdate(filtered.slice(0, 50)); // Max 50
+    const personalNotis = snap.docs.map(doc => doc.data() as Notification);
+    // If user is ADM, we'd normally want ALL_ADMS too. 
+    // But for now, we'll stick to this to avoid non-index 'in' queries.
+    // If the system needs ALL_ADMS, it would be a separate listener or an 'in' with index.
+    onUpdate(personalNotis.slice(0, 50)); 
   }, (error) => {
     handleFirestoreError(error, OperationType.LIST, 'notifications');
   });

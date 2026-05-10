@@ -20,7 +20,8 @@ import {
   query, 
   where, 
   onSnapshot,
-  getDocs
+  getDocs,
+  doc
 } from 'firebase/firestore';
 import { Product, Order, Wallet, Withdrawal, UserProfile, Coupon, MaterialApoio } from '../types';
 import { 
@@ -131,13 +132,12 @@ export function DashboardProducer({ userId, userProfile, onOpenChat }: Dashboard
     });
 
     // 3. Wallet
-    const unsubWallet = onSnapshot(collection(db, 'wallets'), (snap) => {
-      const match = snap.docs.find(d => d.id === userId);
-      if (match) {
-        setWallet(match.data() as Wallet);
+    const unsubWallet = onSnapshot(doc(db, 'wallets', userId), (snap) => {
+      if (snap.exists()) {
+        setWallet(snap.data() as Wallet);
       }
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'wallets');
+      handleFirestoreError(error, OperationType.GET, `wallets/${userId}`);
     });
 
     // 4. Withdrawals of this user

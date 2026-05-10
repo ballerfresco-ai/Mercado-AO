@@ -42,7 +42,8 @@ import {
   CreditCard,
   Building,
   Smartphone,
-  SmartphoneIcon
+  SmartphoneIcon,
+  MessageCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -895,6 +896,20 @@ export function MarketplaceClient({ userId, onOpenChat }: MarketplaceClientProps
           </div>
         </div>
       )}
+
+      {/* WHATSAPP FLOATING BUTTON */}
+      <a
+        href="https://wa.me/244950461466"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="fixed bottom-6 left-6 z-[100] bg-[#25D366] text-white p-4 rounded-full shadow-lg hover:scale-110 transition-all active:scale-95 flex items-center justify-center group"
+        aria-label="Contactar no WhatsApp"
+      >
+        <MessageCircle className="w-6 h-6 fill-white" />
+        <div className="absolute left-14 bg-slate-900 border border-white/10 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none font-mono">
+          Suporte Mercado AO
+        </div>
+      </a>
 
     </div>
   );
