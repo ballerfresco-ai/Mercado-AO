@@ -234,7 +234,7 @@ export async function createUserProfile(userId: string, nome: string, email: str
     const wallet: Wallet = {
       id: userId,
       user_id: userId,
-      saldo: 100000 // Iniciar com saldo teste de 100.000 Kz para facilitar demonstração e testes de compras/saques!
+      saldo: 0 // Iniciar com saldo real de 0 Kz para o fluxo de ganhos começar do zero
     };
 
     batch.set(doc(db, 'users', userId), profile);
@@ -257,7 +257,7 @@ export async function createUserProfile(userId: string, nome: string, email: str
       const platformWallet: Wallet = {
         id: 'PLATAFORMA',
         user_id: 'PLATAFORMA',
-        saldo: 15000 // platform seed balance
+        saldo: 0 // Saldo inicial da plataforma zerado
       };
       batch.set(doc(db, 'wallets', 'PLATAFORMA'), platformWallet);
     }

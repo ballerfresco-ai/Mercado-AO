@@ -278,11 +278,11 @@ export default function App() {
         {!isTesterSwitcherOpen ? (
           <button
             onClick={() => setIsTesterSwitcherOpen(true)}
-            className="flex items-center gap-2 bg-[#2563EB] hover:bg-blue-600 border border-blue-500 text-white font-semibold font-mono text-xs px-4 py-3 rounded-full shadow-2xl transition-all"
+            className="flex items-center gap-2 bg-slate-900/80 hover:bg-slate-800 border border-white/10 text-slate-400 font-semibold font-mono text-[10px] px-3 py-2 rounded-xl shadow-2xl transition-all"
             id="open_tester_bar_btn"
           >
-            <SlidersHorizontal className="w-4 h-4" />
-            <span>Painel do Avaliador (Mudar Contas)</span>
+            <Settings className="w-3.5 h-3.5" />
+            <span>Painel de Desenvolvimento</span>
           </button>
         ) : (
           <div className="bg-[#0F172A] border border-white/10 rounded-2xl p-5 shadow-2xl w-80 space-y-3 relative">
@@ -294,11 +294,11 @@ export default function App() {
             </button>
             
             <h5 className="font-display font-bold text-sm flex items-center gap-1.5">
-              <Sparkles className="w-4 h-4 text-blue-400" />
-              <span>Simular Diferentes Perfis</span>
+              <SlidersHorizontal className="w-4 h-4 text-blue-400" />
+              <span>Troca de Perfil de Acesso</span>
             </h5>
             <p className="text-[10px] text-slate-400 leading-normal">
-              Como testador, troque de perfil instantaneamente para experimentar o ecossistema completo do Mercado AO em Angola:
+              Utilitário para alternar entre as visões de negócio da plataforma:
             </p>
 
             <div className="grid grid-cols-2 gap-2 text-[11px] font-mono font-bold">
@@ -309,7 +309,6 @@ export default function App() {
                 }`}
               >
                 <span>🛒 Comprador</span>
-                <span className="text-[8px] font-normal font-sans text-slate-450 mt-0.5">Fazer pedidos & avaliar</span>
               </button>
 
               <button
@@ -319,7 +318,6 @@ export default function App() {
                 }`}
               >
                 <span>🏢 Vendedor</span>
-                <span className="text-[8px] font-normal font-sans text-slate-450 mt-0.5">Listar bens, IA & enviar</span>
               </button>
 
               <button
@@ -329,7 +327,6 @@ export default function App() {
                 }`}
               >
                 <span>✨ Afiliado</span>
-                <span className="text-[8px] font-normal font-sans text-slate-450 mt-0.5">Links de comissão & copies</span>
               </button>
 
               <button
@@ -338,13 +335,12 @@ export default function App() {
                   activeRole === 'ADM' ? 'bg-blue-500/10 border-blue-500 text-blue-400' : 'bg-slate-900 border-white/5 text-slate-400 hover:border-white/10'
                 }`}
               >
-                <span>👑 Admin ADM</span>
-                <span className="text-[8px] font-normal font-sans text-slate-450 mt-0.5">Preços, saques & gráficos</span>
+                <span>👑 Administrador</span>
               </button>
             </div>
 
             <div className="pt-2 border-t border-slate-800 text-[10px] text-slate-500 text-center">
-              Sua Conta Real de Registo: <span className="text-slate-350">{userProfile.tipo}</span>
+              Perfil Original: <span className="text-slate-350">{userProfile.tipo}</span>
             </div>
           </div>
         )}

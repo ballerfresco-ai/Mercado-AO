@@ -279,10 +279,16 @@ function AdminDashboard({ users, products, orders }: any) {
     vendasFisicas: orders.filter((o: any) => o.status === 'delivered' && !o.digital_access_granted).length,
   };
 
-  const chartData = [
-    { name: 'Seg', v: 4000 }, { name: 'Ter', v: 3000 }, { name: 'Qua', v: 2000 }, 
-    { name: 'Qui', v: 2780 }, { name: 'Sex', v: 1890 }, { name: 'Sab', v: 2390 }, { name: 'Dom', v: 3490 },
-  ];
+  // Real performance calculation for the last 7 days
+  const days = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'];
+  const chartData = days.map((day, idx) => {
+    const dayOrders = orders.filter((o: any) => {
+      const orderDate = new Date(o.createdAt);
+      return o.status === 'delivered' && orderDate.getDay() === idx;
+    });
+    const total = dayOrders.reduce((acc: number, o: any) => acc + o.total, 0);
+    return { name: day, v: total };
+  });
 
   return (
     <div className="space-y-8">
